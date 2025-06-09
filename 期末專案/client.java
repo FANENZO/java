@@ -48,6 +48,9 @@ public class client extends JPanel implements KeyListener, Runnable {
     private Image mushroomImage;
     //goomba
     private Image goombaImage;
+    //block
+    private Image normalblockImage; // 磚塊圖片
+    private Image itemblockImage; // 物品磚塊圖片
 
     public client(String serverAddress, int serverPort) {
         setFocusable(true);
@@ -100,6 +103,9 @@ public class client extends JPanel implements KeyListener, Runnable {
         mushroomImage = new ImageIcon("images/mushroom.png").getImage();
         // 載入 Goomba 圖片
         goombaImage = new ImageIcon("images/8-bit-goomba-removebg-preview.png").getImage();
+        // 載入磚塊圖片
+        normalblockImage = new ImageIcon("images\\Brick.png").getImage();
+        itemblockImage = new ImageIcon("images\\Bricks1.png").getImage();
 
     }
 
@@ -207,11 +213,10 @@ public class client extends JPanel implements KeyListener, Runnable {
                 boolean isHit = (type.equals("item") && block.containsKey("isHit")) ? (boolean) block.get("isHit") : false;
 
                 if (type.equals("item")) {
-                    g.setColor(isHit ? Color.GRAY : Color.RED);
+                    g.drawImage(itemblockImage, bx, by, bwidth, bheight, this);
                 } else {
-                    g.setColor(Color.ORANGE);
+                    g.drawImage(normalblockImage, bx, by, bwidth, bheight, this);
                 }
-                g.fillRect(bx, by, bwidth, bheight);
             }
         }
 
