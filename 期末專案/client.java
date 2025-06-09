@@ -8,8 +8,10 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.HashSet; // 導入 HashSet
 import java.util.List;
 import java.util.Map;
+import java.util.Set; // 導入 Set
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -19,8 +21,7 @@ public class client extends JPanel implements KeyListener, Runnable {
     private int playerWidth = 50, playerHeight = 50; // 客戶端本地定義，伺服器會傳遞實際尺寸
     private Image playerImage, bigplayerImage; // 角色圖片
     private Image playerjump, bigplayerjump; // 跳躍圖片
-    // 移除 ImageIcon playerGif, bigplayerGif; 如果你不打算在客戶端處理GIF動畫，而是靜態圖片。
-    // 如果是動畫，並且希望ImageIcon自動處理動畫，可以保留並在繪圖時使用 playerGif.getImage()
+    private ImageIcon playerGif, bigplayerGif; // 如果你有 GIF 動畫，這些可以用於動畫播放
 
     // 背景屬性
     private Image[] backgrounds = new Image[4];
@@ -52,6 +53,11 @@ public class client extends JPanel implements KeyListener, Runnable {
     private Image normalblockImage; // 磚塊圖片
     private Image itemblockImage; // 物品磚塊圖片
 
+    // ====== 新增：按鍵狀態管理 ======
+    private Set<Integer> pressedKeys = new HashSet<>();
+    private final int KEY_SEND_INTERVAL = 50; // 毫秒，每 50 毫秒發送一次按鍵狀態
+    // ===============================
+
     public client(String serverAddress, int serverPort) {
         setFocusable(true);
         addKeyListener(this);
@@ -78,21 +84,21 @@ public class client extends JPanel implements KeyListener, Runnable {
             System.exit(1);
         }
 
-        // 啟動兩個線程：一個用於客戶端遊戲邏輯和渲染，一個用於從伺服器讀取數據
-        // 這裡不再需要 new Thread(this).start();
-        // 因為 repaint() 將完全由 ServerReader 驅動
         new Thread(new ServerReader()).start(); // 啟動線程從伺服器讀取數據
+        // ====== 新增：啟動按鍵狀態發送線程/定時器 ======
+        // 這裡我們使用一個簡單的線程來定時發送按鍵狀態
+        new Thread(this).start(); // 重新啟用這個線程，現在它負責發送按鍵指令
+        // ===============================================
     }
 
     private void loadImages() {
         // 載入主角圖片
-        playerImage = new ImageIcon("mario.png").getImage();
-        bigplayerImage = new ImageIcon("bigmario.png").getImage();
-        playerjump = new ImageIcon("mariojump.png").getImage();
-        bigplayerjump = new ImageIcon("bigmariojump.png").getImage();
-        // 如果這些是GIF動畫，並且你希望ImageIcon自行處理幀更新，可以保留它們：
-        // playerGif = new ImageIcon("mario.gif");
-        // bigplayerGif = new ImageIcon("bigmario.gif");
+        playerImage = new ImageIcon("images\\mario1.png").getImage();
+        bigplayerImage = new ImageIcon("images\\bigmario1-removebg-preview.png").getImage();
+        playerjump = new ImageIcon("images\\mariojmup.png").getImage();
+        bigplayerjump = new ImageIcon("images\\bigmariojump-removebg-preview.png").getImage();
+        playerGif = new ImageIcon("images/output-onlinegiftools.gif");
+        bigplayerGif = new ImageIcon("images\\bigmariorun.gif");
 
         // 載入背景圖片 (假設有 background1.png, background2.png 等)
         for (int i = 0; i < backgrounds.length; i++) {
@@ -102,11 +108,10 @@ public class client extends JPanel implements KeyListener, Runnable {
         // 載入蘑菇圖片
         mushroomImage = new ImageIcon("images/mushroom.png").getImage();
         // 載入 Goomba 圖片
-        goombaImage = new ImageIcon("images/8-bit-goomba-removebg-preview.png").getImage();
+        goombaImage = new ImageIcon("images/output-goomba.gif").getImage();
         // 載入磚塊圖片
         normalblockImage = new ImageIcon("images\\Brick.png").getImage();
         itemblockImage = new ImageIcon("images\\Bricks1.png").getImage();
-
     }
 
     // 負責從伺服器讀取數據的線程
@@ -128,13 +133,10 @@ public class client extends JPanel implements KeyListener, Runnable {
                         // 判斷當前客戶端玩家是否遊戲結束
                         if (allPlayerPositions != null && allPlayerPositions.containsKey(assignedPlayerName)) {
                             int[] currentPlayerStateArray = allPlayerPositions.get(assignedPlayerName);
-                            // 假設 gameOver 資訊在陣列的第5個索引 (0-based: X, Y, Width, Height, IsBig, IsGameOver)
                             if (currentPlayerStateArray.length > 5) {
                                 gameOver = (currentPlayerStateArray[5] == 1);
                             }
                         }
-
-                        // 只有在接收到新數據時才調用 repaint()
                         repaint();
                     }
                 }
@@ -173,24 +175,14 @@ public class client extends JPanel implements KeyListener, Runnable {
                 boolean isPlayerGameOver = (playerStateData[5] == 1);
 
                 if (isPlayerGameOver) {
-                    // 如果這個玩家遊戲結束，可能就不再繪製他
                     continue;
                 }
 
                 Image playerToDraw;
-                // 注意：如果你有跑步動畫的 GIF，並且希望它自動播放，
-                // 則需要使用 ImageIcon.getImage() 來獲取當前幀。
-                // 如果是靜態圖片，根據狀態選擇圖片。
-                // 這裡假設 playerImage/bigplayerImage 已經是載入好的靜態圖片
-                // 或者你希望 ImageIcon 自動處理 GIF 動畫。
                 if (isBigMario) {
-                    playerToDraw = bigplayerImage;
-                    // 如果有大瑪利歐GIF動畫，可以這樣使用：
-                    // playerToDraw = bigplayerGif.getImage();
+                    playerToDraw = bigplayerGif.getImage();
                 } else {
-                    playerToDraw = playerImage;
-                    // 如果有小瑪利歐GIF動畫，可以這樣使用：
-                    // playerToDraw = playerGif.getImage();
+                    playerToDraw = playerGif.getImage();
                 }
 
                 g.drawImage(playerToDraw, currentP_X, currentP_Y, currentP_Width, currentP_Height, this);
@@ -259,47 +251,53 @@ public class client extends JPanel implements KeyListener, Runnable {
     }
 
     @Override
-    public void run() {
-        // 這個 run 方法現在變得無用，因為 repaint() 完全由 ServerReader 驅動。
-        // 你可以安全地移除這個方法，或者讓它做一些非繪圖的客戶端本地更新，
-        // 但目前遊戲狀態是完全由伺服器驅動的。
-        // 為了確保 Swing 執行緒安全，所有 Swing 繪圖應該在 Event Dispatch Thread (EDT) 上進行。
-        // repaint() 自動處理這個。
-
-        // 為了避免空循環導致CPU空轉，可以這樣做，但它不會觸發額外的 repaint()
-        while(true) {
-            try {
-                Thread.sleep(100); // 減少 CPU 消耗，但不再主動觸發繪圖
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-    }
-
-    @Override
-    public void keyPressed(KeyEvent e) {
+public void run() {
+    // 這個 run 方法現在負責定時發送按鍵指令
+    while (socket.isConnected()) {
         try {
-            if (out != null) { // 確保輸出流已初始化
-                if (e.getKeyCode() == KeyEvent.VK_LEFT) {
-                    out.writeObject("MOVE_LEFT");
-                } else if (e.getKeyCode() == KeyEvent.VK_RIGHT) {
-                    out.writeObject("MOVE_RIGHT");
-                } else if (e.getKeyCode() == KeyEvent.VK_SPACE) {
-                    out.writeObject("JUMP");
+            // 暫時改回發送單一指令，方便測試
+            String commandToSend = null;
+            synchronized (pressedKeys) {
+                if (pressedKeys.contains(KeyEvent.VK_LEFT) || pressedKeys.contains(KeyEvent.VK_A)) {
+                    commandToSend = "MOVE_LEFT";
+                } else if (pressedKeys.contains(KeyEvent.VK_RIGHT) || pressedKeys.contains(KeyEvent.VK_D)) {
+                    commandToSend = "MOVE_RIGHT";
+                } else if (pressedKeys.contains(KeyEvent.VK_SPACE) || pressedKeys.contains(KeyEvent.VK_W)) {
+                    commandToSend = "JUMP";
                 }
-                out.flush(); // 確保數據立即發送
+                // 注意：這裡只會發送一個指令，如果同時按下左右，只有一個會生效
+                // 這只是為了驗證伺服器是否能接收指令
             }
-        } catch (IOException ex) {
-            System.err.println("發送指令到伺服器時發生錯誤: " + ex.getMessage());
-            // ex.printStackTrace(); // 在正常運行時可以註釋掉這行，避免過多輸出
+
+            if (commandToSend != null) {
+                out.writeObject(commandToSend);
+                out.flush();
+            }
+
+            Thread.sleep(KEY_SEND_INTERVAL);
+        } catch (IOException | InterruptedException e) {
+            System.err.println("發送按鍵指令時發生錯誤或線程被中斷: " + e.getMessage());
+            Thread.currentThread().interrupt();
+            break;
         }
     }
+}
 
-    @Override
-    public void keyReleased(KeyEvent e) {
-        // 通常用於停止移動指令，目前伺服器模型可能不需要
+// 並且在 keyPressed 和 keyReleased 中不再直接發送指令，只更新 pressedKeys 集合
+// （這部分在您上一個提供的程式碼中已經是這樣了，保持不變）
+@Override
+public void keyPressed(KeyEvent e) {
+    synchronized (pressedKeys) {
+        pressedKeys.add(e.getKeyCode());
     }
+}
+
+@Override
+public void keyReleased(KeyEvent e) {
+    synchronized (pressedKeys) {
+        pressedKeys.remove(e.getKeyCode());
+    }
+}
 
     @Override
     public void keyTyped(KeyEvent e) {
