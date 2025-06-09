@@ -8,10 +8,12 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.util.ArrayList;
-import java.util.HashSet; // 導入 HashSet
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set; // 導入 Set
+import java.util.Set;
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -45,18 +47,17 @@ public class client extends JPanel implements KeyListener, Runnable {
     private ObjectInputStream in;
     private String assignedPlayerName; // 儲存 P1, P2 等
 
-    //蘑菇
+    // 蘑菇
     private Image mushroomImage;
-    //goomba
+    // Goomba
     private Image goombaImage;
-    //block
+    // 磚塊
     private Image normalblockImage; // 磚塊圖片
     private Image itemblockImage; // 物品磚塊圖片
 
-    // ====== 新增：按鍵狀態管理 ======
-    private Set<Integer> pressedKeys = new HashSet<>();
+    // 按鍵狀態管理，使用 synchronizedSet 確保線程安全
+    private Set<Integer> pressedKeys = Collections.synchronizedSet(new HashSet<>());
     private final int KEY_SEND_INTERVAL = 50; // 毫秒，每 50 毫秒發送一次按鍵狀態
-    // ===============================
 
     public client(String serverAddress, int serverPort) {
         setFocusable(true);
@@ -66,29 +67,29 @@ public class client extends JPanel implements KeyListener, Runnable {
         loadImages(); // 加載遊戲圖片
 
         try {
-            System.out.println("客戶端嘗試連接伺服器: " + serverAddress + ":" + serverPort);
+            System.out.println("客戶端嘗試連接伺服器: " + serverAddress + ":" + serverPort); // DEBUG
             socket = new Socket(serverAddress, serverPort);
-            System.out.println("客戶端連接成功！");
+            System.out.println("客戶端連接成功！"); // DEBUG
 
             out = new ObjectOutputStream(socket.getOutputStream());
             in = new ObjectInputStream(socket.getInputStream());
-            System.out.println("客戶端串流初始化成功！");
+            System.out.println("客戶端串流初始化成功！"); // DEBUG
 
             // 從伺服器接收分配的玩家名稱
             assignedPlayerName = (String) in.readObject();
-            System.out.println("您是: " + assignedPlayerName);
+            System.out.println("您是: " + assignedPlayerName + " - 接收到伺服器分配的名字"); // DEBUG
+
+            new Thread(new ServerReader()).start(); // 啟動線程從伺服器讀取數據
+            System.out.println("ServerReader 線程已啟動。"); // DEBUG
+
+            new Thread(this).start(); // 啟動按鍵狀態發送線程
+            System.out.println("按鍵發送線程已啟動。"); // DEBUG
 
         } catch (IOException | ClassNotFoundException e) {
-            System.err.println("連接伺服器失敗或讀取初始數據錯誤: " + e.getMessage());
+            System.err.println("客戶端連接或初始化失敗: " + e.getMessage()); // DEBUG
             e.printStackTrace();
             System.exit(1);
         }
-
-        new Thread(new ServerReader()).start(); // 啟動線程從伺服器讀取數據
-        // ====== 新增：啟動按鍵狀態發送線程/定時器 ======
-        // 這裡我們使用一個簡單的線程來定時發送按鍵狀態
-        new Thread(this).start(); // 重新啟用這個線程，現在它負責發送按鍵指令
-        // ===============================================
     }
 
     private void loadImages() {
@@ -118,31 +119,38 @@ public class client extends JPanel implements KeyListener, Runnable {
     private class ServerReader implements Runnable {
         @Override
         public void run() {
+            System.out.println("ServerReader 執行中，等待伺服器數據..."); // DEBUG
             try {
                 while (socket.isConnected()) {
                     Object serverData = in.readObject();
+                    System.out.println("ServerReader 接收到數據: " + serverData.getClass().getName()); // DEBUG
                     if (serverData instanceof Map) {
                         Map<String, Object> fullGameState = (Map<String, Object>) serverData;
+                        System.out.println("ServerReader 數據為 Map，包含鍵: " + fullGameState.keySet()); // DEBUG
 
                         allPlayerPositions = (Map<String, int[]>) fullGameState.get("players");
                         receivedBlocks = (List<Map<String, Object>>) fullGameState.get("blocks");
                         receivedMushrooms = (List<Map<String, Object>>) fullGameState.get("mushrooms");
                         receivedGoombas = (List<Map<String, Object>>) fullGameState.get("goombas");
                         groundLevel = (int) fullGameState.get("groundLevel");
+                        System.out.println("更新遊戲狀態。玩家數量: " + (allPlayerPositions != null ? allPlayerPositions.size() : 0)); // DEBUG
 
-                        // 判斷當前客戶端玩家是否遊戲結束
                         if (allPlayerPositions != null && allPlayerPositions.containsKey(assignedPlayerName)) {
                             int[] currentPlayerStateArray = allPlayerPositions.get(assignedPlayerName);
                             if (currentPlayerStateArray.length > 5) {
                                 gameOver = (currentPlayerStateArray[5] == 1);
                             }
                         }
-                        repaint();
+                        repaint(); // 收到新狀態後請求重繪畫面
+                    } else {
+                        System.out.println("ServerReader 接收到非 Map 數據: " + serverData); // DEBUG
                     }
                 }
             } catch (IOException | ClassNotFoundException e) {
-                System.err.println("從伺服器讀取數據時發生錯誤: " + e.getMessage());
+                System.err.println("ServerReader 讀取數據錯誤: " + e.getMessage()); // DEBUG
+                e.printStackTrace();
             } finally {
+                // 確保連接關閉
                 try {
                     if (socket != null && !socket.isClosed()) {
                         socket.close();
@@ -161,8 +169,19 @@ public class client extends JPanel implements KeyListener, Runnable {
         // 繪製背景
         g.drawImage(backgrounds[currentBackgroundIndex], 0, 0, screenWidth, screenHeight, this);
 
-        // 繪製所有玩家
+        // 繪製地面 (使用伺服器傳遞的 groundLevel)
+        g.setColor(new Color(139, 69, 19)); // 棕色
+        if (groundLevel > 0) { // 確保 groundLevel 已從伺服器獲取
+            g.fillRect(0, groundLevel, screenWidth, screenHeight - groundLevel);
+        } else {
+            // 如果還沒收到 groundLevel，先用預設值或不繪製
+            g.fillRect(0, screenHeight - groundHeight, screenWidth, groundHeight);
+            System.out.println("PaintComponent: groundLevel 未設定，使用預設地面。"); // DEBUG
+        }
+
+        // 只有當從伺服器接收到遊戲狀態時才進行繪製
         if (allPlayerPositions != null) {
+            // 繪製所有玩家
             for (Map.Entry<String, int[]> entry : allPlayerPositions.entrySet()) {
                 String pName = entry.getKey();
                 int[] playerStateData = entry.getValue();
@@ -175,7 +194,10 @@ public class client extends JPanel implements KeyListener, Runnable {
                 boolean isPlayerGameOver = (playerStateData[5] == 1);
 
                 if (isPlayerGameOver) {
-                    continue;
+                    g.drawImage(gameover, currentP_X, currentP_Y, currentP_Width, currentP_Height, this);
+                    g.setColor(Color.RED);
+                    g.drawString("GAME OVER", currentP_X, currentP_Y - 10);
+                    continue; // 跳過繪製該玩家的正常圖片
                 }
 
                 Image playerToDraw;
@@ -192,112 +214,114 @@ public class client extends JPanel implements KeyListener, Runnable {
                 int nameWidth = g.getFontMetrics().stringWidth(pName);
                 g.drawString(pName, currentP_X + (currentP_Width - nameWidth) / 2, currentP_Y - 10);
             }
-        }
 
-        // 繪製磚塊
-        if (receivedBlocks != null) {
-            for (Map<String, Object> block : receivedBlocks) {
-                int bx = (int) block.get("x");
-                int by = (int) block.get("y");
-                int bwidth = (int) block.get("width");
-                int bheight = (int) block.get("height");
-                String type = (String) block.get("type");
-                boolean isHit = (type.equals("item") && block.containsKey("isHit")) ? (boolean) block.get("isHit") : false;
+            // 繪製磚塊
+            if (receivedBlocks != null) {
+                for (Map<String, Object> block : receivedBlocks) {
+                    int bx = (int) block.get("x");
+                    int by = (int) block.get("y");
+                    int bwidth = (int) block.get("width");
+                    int bheight = (int) block.get("height");
+                    String type = (String) block.get("type");
 
-                if (type.equals("item")) {
-                    g.drawImage(itemblockImage, bx, by, bwidth, bheight, this);
-                } else {
-                    g.drawImage(normalblockImage, bx, by, bwidth, bheight, this);
+                    if (type.equals("item")) {
+                        g.drawImage(itemblockImage, bx, by, bwidth, bheight, this);
+                    } else {
+                        g.drawImage(normalblockImage, bx, by, bwidth, bheight, this);
+                    }
                 }
             }
-        }
 
-        // 繪製蘑菇
-        if (receivedMushrooms != null) {
-            for (Map<String, Object> mushroom : receivedMushrooms) {
-                boolean isVisible = (boolean) mushroom.get("isVisible");
-                if (isVisible) {
-                    int mx = (int) mushroom.get("x");
-                    int my = (int) mushroom.get("y");
-                    int mwidth = (int) mushroom.get("width");
-                    int mheight = (int) mushroom.get("height");
-                    g.drawImage(mushroomImage, mx, my, mwidth, mheight, this); // 使用你的蘑菇圖片
+            // 繪製蘑菇
+            if (receivedMushrooms != null) {
+                for (Map<String, Object> mushroom : receivedMushrooms) {
+                    boolean isVisible = (boolean) mushroom.get("isVisible");
+                    if (isVisible) {
+                        int mx = (int) mushroom.get("x");
+                        int my = (int) mushroom.get("y");
+                        int mwidth = (int) mushroom.get("width");
+                        int mheight = (int) mushroom.get("height");
+                        g.drawImage(mushroomImage, mx, my, mwidth, mheight, this);
+                    }
                 }
             }
-        }
 
-        // 繪製 Goomba
-        if (receivedGoombas != null) {
-            for (Map<String, Object> goomba : receivedGoombas) {
-                boolean isAlive = (boolean) goomba.get("isAlive");
-                if (isAlive) {
-                    int gx = (int) goomba.get("x");
-                    int gy = (int) goomba.get("y");
-                    int gwidth = (int) goomba.get("width");
-                    int gheight = (int) goomba.get("height");
-                    g.drawImage(goombaImage, gx, gy, gwidth, gheight, this);
+            // 繪製 Goomba
+            if (receivedGoombas != null) {
+                for (Map<String, Object> goomba : receivedGoombas) {
+                    boolean isAlive = (boolean) goomba.get("isAlive");
+                    if (isAlive) {
+                        int gx = (int) goomba.get("x");
+                        int gy = (int) goomba.get("y");
+                        int gwidth = (int) goomba.get("width");
+                        int gheight = (int) goomba.get("height");
+                        g.drawImage(goombaImage, gx, gy, gwidth, gheight, this);
+                    }
                 }
             }
+            System.out.println("PaintComponent: 正在繪製遊戲物體。"); // DEBUG
+        } else {
+            // 如果還沒有收到伺服器狀態，顯示連接訊息
+            g.setColor(Color.WHITE);
+            g.drawString("等待伺服器資料...", screenWidth / 2 - 60, screenHeight / 2);
+            System.out.println("PaintComponent: allPlayerPositions 為空，顯示等待訊息。"); // DEBUG
         }
 
-        // 繪製地面
-        g.setColor(new Color(139, 69, 19)); // 棕色
-        g.fillRect(0, groundLevel, screenWidth, screenHeight - groundLevel);
-
-        // 如果當前客戶端玩家遊戲結束，顯示 Game Over 畫面
+        // 如果當前客戶端玩家遊戲結束，顯示 Game Over 畫面覆蓋所有
         if (gameOver) {
             g.drawImage(gameover, 0, 0, screenWidth, screenHeight, this);
+            System.out.println("PaintComponent: 遊戲結束畫面已繪製。"); // DEBUG
         }
     }
 
     @Override
-public void run() {
-    // 這個 run 方法現在負責定時發送按鍵指令
-    while (socket.isConnected()) {
-        try {
-            // 暫時改回發送單一指令，方便測試
-            String commandToSend = null;
-            synchronized (pressedKeys) {
-                if (pressedKeys.contains(KeyEvent.VK_LEFT) || pressedKeys.contains(KeyEvent.VK_A)) {
-                    commandToSend = "MOVE_LEFT";
-                } else if (pressedKeys.contains(KeyEvent.VK_RIGHT) || pressedKeys.contains(KeyEvent.VK_D)) {
-                    commandToSend = "MOVE_RIGHT";
-                } else if (pressedKeys.contains(KeyEvent.VK_SPACE) || pressedKeys.contains(KeyEvent.VK_W)) {
-                    commandToSend = "JUMP";
+    public void run() {
+        // 這個 run 方法現在負責定時發送按鍵指令
+        while (socket.isConnected()) {
+            try {
+                Map<String, Boolean> currentKeyStatesToSend = new HashMap<>();
+                currentKeyStatesToSend.put("MOVE_LEFT", false);
+                currentKeyStatesToSend.put("MOVE_RIGHT", false);
+                currentKeyStatesToSend.put("JUMP", false);
+
+                synchronized (pressedKeys) { // 同步訪問 pressedKeys 集合
+                    if (pressedKeys.contains(KeyEvent.VK_LEFT) || pressedKeys.contains(KeyEvent.VK_A)) {
+                        currentKeyStatesToSend.put("MOVE_LEFT", true);
+                    }
+                    if (pressedKeys.contains(KeyEvent.VK_RIGHT) || pressedKeys.contains(KeyEvent.VK_D)) {
+                        currentKeyStatesToSend.put("MOVE_RIGHT", true);
+                    }
+                    if (pressedKeys.contains(KeyEvent.VK_SPACE) || pressedKeys.contains(KeyEvent.VK_W)) {
+                        currentKeyStatesToSend.put("JUMP", true);
+                    }
                 }
-                // 注意：這裡只會發送一個指令，如果同時按下左右，只有一個會生效
-                // 這只是為了驗證伺服器是否能接收指令
-            }
 
-            if (commandToSend != null) {
-                out.writeObject(commandToSend);
+                out.writeObject(currentKeyStatesToSend); // 總是發送地圖
                 out.flush();
-            }
+                // System.out.println("已發送按鍵狀態: " + currentKeyStatesToSend); // DEBUG: 如果輸出太多可以註釋掉
 
-            Thread.sleep(KEY_SEND_INTERVAL);
-        } catch (IOException | InterruptedException e) {
-            System.err.println("發送按鍵指令時發生錯誤或線程被中斷: " + e.getMessage());
-            Thread.currentThread().interrupt();
-            break;
+                Thread.sleep(KEY_SEND_INTERVAL);
+            } catch (IOException | InterruptedException e) {
+                System.err.println("發送按鍵指令時發生錯誤或線程被中斷: " + e.getMessage());
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
     }
-}
 
-// 並且在 keyPressed 和 keyReleased 中不再直接發送指令，只更新 pressedKeys 集合
-// （這部分在您上一個提供的程式碼中已經是這樣了，保持不變）
-@Override
-public void keyPressed(KeyEvent e) {
-    synchronized (pressedKeys) {
-        pressedKeys.add(e.getKeyCode());
+    @Override
+    public void keyPressed(KeyEvent e) {
+        synchronized (pressedKeys) {
+            pressedKeys.add(e.getKeyCode());
+        }
     }
-}
 
-@Override
-public void keyReleased(KeyEvent e) {
-    synchronized (pressedKeys) {
-        pressedKeys.remove(e.getKeyCode());
+    @Override
+    public void keyReleased(KeyEvent e) {
+        synchronized (pressedKeys) {
+            pressedKeys.remove(e.getKeyCode());
+        }
     }
-}
 
     @Override
     public void keyTyped(KeyEvent e) {
@@ -325,6 +349,7 @@ public void keyReleased(KeyEvent e) {
         frame.add(game);
         frame.setSize(game.screenWidth, game.screenHeight);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setResizable(false);
         frame.setVisible(true);
     }
 }
