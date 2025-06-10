@@ -1,3 +1,4 @@
+import java.awt.Rectangle;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -9,7 +10,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentHashMap; // 匯入 Rectangle 類別
 
 public class GameServer {
 
@@ -202,26 +203,22 @@ public class GameServer {
 
             // 玩家與磚塊碰撞
             blocks.forEach(block -> {
+                // 創建玩家和方塊的邊界矩形，方便檢測
+                Rectangle playerBounds = new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight);
+                Rectangle blockBounds = new Rectangle(block.x, block.y, block.width, block.height);
+                Rectangle nextPlayerBoundsV = new Rectangle(player.playerX, (int)(player.playerY + player.velocityY), player.playerWidth, player.playerHeight);
+
+
                 // 檢查玩家底部是否與磚塊頂部碰撞 (用於站立)
-                if (player.velocityY >= 0 && 
-                    player.playerX < block.x + block.width &&
-                    player.playerX + player.playerWidth > block.x &&
-                    player.playerY + player.playerHeight <= block.y + player.velocityY && // 確保從上方接觸
-                    player.playerY + player.playerHeight + player.velocityY >= block.y) {
-                    
+                if (player.velocityY >= 0 && nextPlayerBoundsV.intersects(blockBounds) && player.playerY + player.playerHeight <= block.y) {
                     player.playerY = block.y - player.playerHeight; // 落在磚塊上
                     player.velocityY = 0;
                     player.isOnGround = true;
                 }
                 // 檢查玩家頭部是否與磚塊底部碰撞 (用於頂磚塊)
-                else if (player.velocityY < 0 && 
-                         player.playerX < block.x + block.width &&
-                         player.playerX + player.playerWidth > block.x &&
-                         player.playerY >= block.y + block.height + player.velocityY && // 確保從下方接觸
-                         player.playerY + player.velocityY <= block.y + block.height) {
-                    
+                else if (player.velocityY < 0 && nextPlayerBoundsV.intersects(blockBounds) && player.playerY >= block.y + block.height) {
                     player.playerY = block.y + block.height; // 撞到磚塊底部
-                    player.velocityY = 0; // 反彈
+                    player.velocityY = 0; // 停止向上動量
                     
                     if (block instanceof ItemBlockState) {
                         ItemBlockState itemBlock = (ItemBlockState) block;
@@ -233,48 +230,56 @@ public class GameServer {
                                     mushroom.x = block.x;
                                     mushroom.y = block.y - mushroom.height; // 出現在磚塊上方
                                     mushroom.isVisible = true;
-                                    // System.out.println("伺服器：蘑菇出現於 (" + mushroom.x + ", " + mushroom.y + ")");
                                 }
                             });
                         }
                     }
                 }
+                
+                // --- 新增側面碰撞邏輯 ---
+                // 更新玩家邊界以反映當前位置，再次進行檢測
+                playerBounds = new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight);
+                if(playerBounds.intersects(blockBounds)) {
+                    // 如果發生碰撞，判斷是從左邊還是右邊撞上
+                    // 玩家向右移動撞到方塊左側
+                    if (player.movingRight) {
+                        player.playerX = block.x - player.playerWidth; // 將玩家推到方塊左邊
+                    } 
+                    // 玩家向左移動撞到方塊右側
+                    else if (player.movingLeft) {
+                        player.playerX = block.x + block.width; // 將玩家推到方塊右邊
+                    }
+                }
+                // --- 側面碰撞邏輯結束 ---
             });
 
             // 玩家與蘑菇碰撞
             mushrooms.forEach(mushroom -> {
                 if (mushroom.isVisible &&
-                    player.playerX < mushroom.x + mushroom.width &&
-                    player.playerX + player.playerWidth > mushroom.x &&
-                    player.playerY < mushroom.y + mushroom.height &&
-                    player.playerY + player.playerHeight > mushroom.y) {
+                    new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight)
+                    .intersects(new Rectangle(mushroom.x, mushroom.y, mushroom.width, mushroom.height))) {
                     
                     player.isbigmario = true;
                     mushroom.isVisible = false; // 蘑菇消失
-                    System.out.println("伺服器：玩家 " + playerName + " 吃到蘑菇，變大瑪利歐。");
                 }
             });
 
             // 玩家與 Goomba 碰撞
             goombas.forEach(goomba -> {
                 if (goomba.isAlive &&
-                    player.playerX < goomba.x + goomba.width &&
-                    player.playerX + player.playerWidth > goomba.x &&
-                    player.playerY < goomba.y + goomba.height &&
-                    player.playerY + player.playerHeight > goomba.y) {
+                    new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight)
+                    .intersects(new Rectangle(goomba.x, goomba.y, goomba.width, goomba.height))) {
 
-                    // 判斷是否踩到 Goomba (玩家從上方落下，Goomba 死亡)
-                    if (player.velocityY > 0 && player.playerY + player.playerHeight - player.velocityY < goomba.y) {
+                    // 判斷是否踩到 Goomba (玩家從上方落下，且前一幀在 Goomba 上方)
+                    if (player.velocityY > 0 && (player.playerY + player.playerHeight - player.velocityY) <= goomba.y) {
                         goomba.isAlive = false;
-                        player.velocityY = -player.initialJumpVelocity / 2;; // 踩死後小跳一下
-                        System.out.println("伺服器：玩家 " + playerName + " 踩死了 Goomba。");
+                        player.velocityY = player.initialJumpVelocity / 2 * -1; // 踩死後小跳一下
                     } else { // 被 Goomba 撞到
                         if (player.isbigmario) {
                             player.isbigmario = false; // 變回小瑪利歐
-                            System.out.println("伺服器：玩家 " + playerName + " 被 Goomba 撞到，變回小瑪利歐。");
+                            // 可以增加一個短暫的無敵時間
                         } else {
                             player.gameOver = true; // 遊戲結束
-                            System.out.println("伺服器：玩家 " + playerName + " 遊戲結束。");
                         }
                     }
                 }
@@ -284,22 +289,20 @@ public class GameServer {
         // 火球與磚塊、Goomba 碰撞
         fireballs.forEach(fireball -> {
             if (!fireball.isAlive) return;
+            Rectangle fireballBounds = new Rectangle(fireball.x, fireball.y, fireball.width, fireball.height);
 
             // 火球與磚塊碰撞
             blocks.forEach(block -> {
-                if (fireball.collidesWith(block.x, block.y, block.width, block.height)) {
+                if (fireballBounds.intersects(new Rectangle(block.x, block.y, block.width, block.height))) {
                     fireball.isAlive = false; // 火球消失
-                    System.out.println("伺服器：火球撞到磚塊，消失。");
-                    // 可以添加磚塊被火球打爆的邏輯
                 }
             });
 
             // 火球與 Goomba 碰撞
             goombas.forEach(goomba -> {
-                if (goomba.isAlive && fireball.collidesWith(goomba.x, goomba.y, goomba.width, goomba.height)) {
+                if (goomba.isAlive && fireballBounds.intersects(new Rectangle(goomba.x, goomba.y, goomba.width, goomba.height))) {
                     fireball.isAlive = false; // 火球消失
                     goomba.isAlive = false; // Goomba 死亡
-                    System.out.println("伺服器：火球擊中 Goomba，Goomba 死亡。");
                 }
             });
         });
