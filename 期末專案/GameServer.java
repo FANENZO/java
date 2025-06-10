@@ -29,15 +29,17 @@ public class GameServer {
     private List<BlockState> blocks = Collections.synchronizedList(new ArrayList<>());
     private List<MushroomState> mushrooms = Collections.synchronizedList(new ArrayList<>());
     private List<GoombaState> goombas = Collections.synchronizedList(new ArrayList<>());
+    // 新增：火球列表
+    private List<FireballState> fireballs = Collections.synchronizedList(new ArrayList<>());
 
 
     public GameServer(int port) {
         // 初始化遊戲物件
-        blocks.add(new BlockState(200, 450, 50, 50));
+        //blocks.add(new BlockState(400, 350, 50, 50));
         blocks.add(new ItemBlockState(400, 350, 50, 50, false));
 
         for (int i = 0; i < 5; i++) {
-            blocks.add(new BlockState(50 + i * 100, GROUND_LEVEL - 100, 50, 50));
+            blocks.add(new BlockState(50 + i * 100, GROUND_LEVEL - 130, 50, 50));
         }
 
         mushrooms.add(new MushroomState(0, 0, 30, 30, false));
@@ -56,6 +58,7 @@ public class GameServer {
                 // 注意：clients.size() 在此處作為一個初步的判斷，
                 // 更精確的玩家數量應該從 playerStates.size() 或一個專門的計數器獲取
                 if (clients.size() < MAX_PLAYERS) { 
+                    // 修正這裡的拼寫錯誤：getInetAddress()
                     System.out.println("新玩家連線: " + clientSocket.getInetAddress().getHostAddress());
                     
                     String newPlayerName;
@@ -173,6 +176,21 @@ public class GameServer {
                         }
                     });
 
+                    // 新增：更新火球位置和生命週期
+                    fireballs.removeIf(fireball -> {
+                        if (!fireball.isAlive) return true; // 如果已經不活躍，移除
+                        
+                        fireball.x += fireball.speedX; // 更新火球水平位置
+
+                        // 處理火球出界
+                        if (fireball.x < -fireball.width || fireball.x > SCREEN_WIDTH) {
+                            System.out.println("伺服器：火球出界，移除。");
+                            return true; // 火球出界，移除
+                        }
+                        return false; // 繼續保留
+                    });
+
+
                     handleCollisions(); // 處理碰撞
 
                     broadcastGameState(); // 廣播遊戲狀態給所有客戶端
@@ -205,7 +223,7 @@ public class GameServer {
 
                         player.playerY = block.y - player.playerHeight; // 將玩家固定在磚塊頂部
                         player.velocityY = 0; // 停止下落
-                        player.isOnGround = true; // 玩家現在在磚塊上，視為在地面
+                        player.isOnGround = true; // 玩家現在在地面上
                     }
                     // 玩家從下方擊中磚塊 (頭部碰撞)
                     else if (player.velocityY < 0 && // 玩家正在上升
@@ -279,6 +297,33 @@ public class GameServer {
                 }
             });
         });
+
+        // 新增：火球與磚塊的碰撞
+        fireballs.forEach(fireball -> {
+            if (!fireball.isAlive) return;
+
+            blocks.forEach(block -> {
+                if (fireball.collidesWith(block.x, block.y, block.width, block.height)) {
+                    // 火球碰到磚塊後消失
+                    fireball.isAlive = false;
+                    System.out.println("伺服器：火球擊中磚塊，消失。");
+                    // 如果是可破壞的磚塊，可以在這裡修改 block 的狀態
+                }
+            });
+        });
+
+        // 新增：火球與 Goomba 的碰撞
+        fireballs.forEach(fireball -> {
+            if (!fireball.isAlive) return; // 如果火球已經失效，不處理
+
+            goombas.forEach(goomba -> {
+                if (goomba.isAlive && fireball.collidesWith(goomba.x, goomba.y, goomba.width, goomba.height)) {
+                    goomba.isAlive = false; // Goomba 被擊敗
+                    fireball.isAlive = false; // 火球消失
+                    System.out.println("伺服器：火球擊敗 Goomba！");
+                }
+            });
+        });
     }
 
     private void broadcastGameState() {
@@ -339,6 +384,23 @@ public class GameServer {
             goombaData.add(g);
         });
         fullGameState.put("goombas", goombaData);
+
+        // 新增：將火球數據打包
+        List<Map<String, Object>> fireballData = new ArrayList<>();
+        fireballs.forEach(fireball -> {
+            if (fireball.isAlive) { // 只廣播活著的火球
+                Map<String, Object> f = new HashMap<>();
+                f.put("x", fireball.x);
+                f.put("y", fireball.y);
+                f.put("width", fireball.width);
+                f.put("height", fireball.height);
+                f.put("isAlive", fireball.isAlive);
+                f.put("owner", fireball.ownerPlayerName);
+                fireballData.add(f);
+            }
+        });
+        fullGameState.put("fireballs", fireballData);
+
 
         fullGameState.put("groundLevel", GROUND_LEVEL);
 
@@ -410,6 +472,32 @@ public class GameServer {
                                 currentPlayerState.velocityY = currentPlayerState.initialJumpVelocity; // 設置初始向上速度
                                 currentPlayerState.isOnGround = false; // 不再在地面上
                                 // System.out.println("伺服器：玩家 " + playerName + " 開始跳躍。"); // 頻繁輸出，可註釋
+                            }
+                        }
+                        
+                        // 新增：處理火球發射請求
+                        if (keyStates.getOrDefault("FIREBALL_REQUESTED", false)) {
+                            if (currentPlayerState.isbigmario) { // 只有大瑪利歐能發射火球
+                                int fireballSpeed = 10; 
+                                int fireballWidth = 20;
+                                int fireballHeight = 20;
+                                int fireballX = currentPlayerState.playerX;
+                                int fireballY = currentPlayerState.playerY + currentPlayerState.playerHeight / 2 - fireballHeight / 2;
+                                
+                                // 根據玩家當前方向決定火球發射方向
+                                int initialFireballSpeedX = currentPlayerState.movingRight ? fireballSpeed : 
+                                                            (currentPlayerState.movingLeft ? -fireballSpeed : fireballSpeed); 
+                                // 如果玩家靜止，默認向右發射
+                                if (!currentPlayerState.movingLeft && !currentPlayerState.movingRight) {
+                                    initialFireballSpeedX = fireballSpeed; // 假設默認向右
+                                }
+
+
+                                FireballState newFireball = new FireballState(fireballX, fireballY, fireballWidth, fireballHeight, initialFireballSpeedX, playerName);
+                                fireballs.add(newFireball);
+                                System.out.println("伺服器：玩家 " + playerName + " 發射火球。");
+                            } else {
+                                System.out.println("伺服器：玩家 " + playerName + " 嘗試發射火球但不是大瑪利歐。");
                             }
                         }
                     } 
@@ -552,6 +640,32 @@ public class GameServer {
             this.height = height;
             this.isAlive = isAlive;
             this.speed = speed;
+        }
+    }
+
+    // 新增：FireballState 類別
+    private static class FireballState implements Serializable {
+        public int x, y, width, height;
+        public int speedX; // 火球的水平速度
+        public boolean isAlive;
+        public String ownerPlayerName; // 哪個玩家發射的火球
+
+        public FireballState(int x, int y, int width, int height, int speedX, String ownerPlayerName) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.speedX = speedX;
+            this.isAlive = true;
+            this.ownerPlayerName = ownerPlayerName;
+        }
+
+        // 可以添加一個 collidesWith 方法
+        public boolean collidesWith(int otherX, int otherY, int otherWidth, int otherHeight) {
+            return x < otherX + otherWidth &&
+                   x + width > otherX &&
+                   y < otherY + otherHeight &&
+                   y + height > otherY;
         }
     }
 
