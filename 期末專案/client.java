@@ -71,6 +71,8 @@ public class client extends JPanel implements KeyListener, Runnable {
             bigplayerImage = new ImageIcon("images/bigmario.png").getImage();
             playerjump = new ImageIcon("images/mario_jump.png").getImage();
             bigplayerjump = new ImageIcon("images/bigmario_jump.png").getImage();
+            playerGif = new ImageIcon("images/mario.gif");
+            bigplayerGif = new ImageIcon("images/bigmario.gif");
             gameover = new ImageIcon("images/gameover.png").getImage();
             mushroomImage = new ImageIcon("images/mushroom.png").getImage();
             goombaImage = new ImageIcon("images/goomba.png").getImage();

@@ -92,6 +92,8 @@ public class GameServer {
 
     private void startGameLoop() {
         new Thread(() -> {
+            
+
             long lastUpdateTime = System.nanoTime();
             final double GAME_FPS = 60.0;
             final double TIME_PER_UPDATE = 1_000_000_000 / GAME_FPS; 
@@ -113,17 +115,22 @@ public class GameServer {
                             player.playerX += player.playerSpeed;
                         }
 
-                        player.velocityY += player.gravity;
+                        // --- 這是修改的部分 ---
+                        // 只有當玩家不在地面上時，才施加重力
+                        if (!player.isOnGround) {
+                            player.velocityY += player.gravity;
+                        }
+                        // --- 修改結束 ---
 
                         player.playerY += player.velocityY;
 
-                        if (player.playerY + player.playerHeight >= GROUND_LEVEL) {
-                            player.playerY = GROUND_LEVEL - player.playerHeight;
-                            player.velocityY = 0;
-                            player.isOnGround = true; 
-                        } else {
-                            player.isOnGround = false; 
-                        }
+                        // if (player.playerY + player.playerHeight >= GROUND_LEVEL) {
+                        //     player.playerY = GROUND_LEVEL - player.playerHeight;
+                        //     player.velocityY = 0;
+                        //     player.isOnGround = true; 
+                        // } else {
+                        //     player.isOnGround = false; 
+                        // }
 
                         if (player.playerX < 0) player.playerX = 0;
                         if (player.playerX + player.playerWidth > SCREEN_WIDTH) player.playerX = SCREEN_WIDTH - player.playerWidth;
@@ -191,32 +198,40 @@ public class GameServer {
 
     private void handleCollisions() {
         playerStates.forEach((playerName, player) -> {
-            if (player.gameOver) return;
-
-            // 玩家與磚塊碰撞
+            if (player.gameOver)
+                return;
+    
+            System.out.printf("START_TICK[%s]: y=%d, vy=%.2f, onGround(in)=%b%n",
+                playerName, player.playerY, player.velocityY, player.isOnGround);
+    
+            java.util.concurrent.atomic.AtomicBoolean isGroundedThisFrame = new java.util.concurrent.atomic.AtomicBoolean(false);
+    
+            // 檢查與地面碰撞
+            if (player.playerY + player.playerHeight >= GROUND_LEVEL) {
+                player.playerY = GROUND_LEVEL - player.playerHeight;
+                if (player.velocityY > 0) {
+                    player.velocityY = 0;
+                }
+                isGroundedThisFrame.set(true);
+            }
+    
+            // 檢查與方塊碰撞
             blocks.forEach(block -> {
                 Rectangle blockBounds = new Rectangle(block.x, block.y, block.width, block.height);
                 Rectangle playerBounds = new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight);
-                
-                // --- 碰撞邏輯修改 ---
-                // 優先處理垂直碰撞
-                
-                // 預測玩家下一幀的垂直位置
                 Rectangle nextPlayerBoundsV = new Rectangle(player.playerX, (int)(player.playerY + player.velocityY), player.playerWidth, player.playerHeight);
-                
-                // 1. 檢查是否從上方落在方塊上
-                // 條件: 玩家正在下落或靜止，下一幀會與方塊相交，且當前在方塊上方
-                if (player.velocityY >= 0 && nextPlayerBoundsV.intersects(blockBounds) && player.playerY + player.playerHeight <= block.y + 1) {
-                    player.playerY = block.y - player.playerHeight; // 將玩家放在方塊頂部
+    
+                // 從上方落在方塊上
+                if (player.velocityY >= 0 && nextPlayerBoundsV.intersects(blockBounds) && player.playerY + player.playerHeight <= block.y + 5) {
+                    player.playerY = block.y - player.playerHeight;
                     player.velocityY = 0;
-                    player.isOnGround = true;
+                    isGroundedThisFrame.set(true);
                 }
-                // 2. 檢查是否從下方頂到方塊
-                // 條件: 玩家正在向上跳，下一幀會與方塊相交，且當前在方塊下方
+                // 從下方頂到方塊
                 else if (player.velocityY < 0 && nextPlayerBoundsV.intersects(blockBounds) && player.playerY >= block.y + block.height - 1) {
-                    player.playerY = block.y + block.height; // 反彈回方塊底部
-                    player.velocityY = 0; // 停止上升
-                    
+                    player.playerY = block.y + block.height;
+                    player.velocityY = 0;
+    
                     if (block instanceof ItemBlockState) {
                         ItemBlockState itemBlock = (ItemBlockState) block;
                         if (!itemBlock.isHit) {
@@ -229,40 +244,56 @@ public class GameServer {
                         }
                     }
                 }
-                // 3. 如果沒有發生垂直碰撞，才檢查側面碰撞
+                // 側面碰撞
                 else if (playerBounds.intersects(blockBounds)) {
-                    // 玩家向右移動撞到方塊左側
                     if (player.movingRight) {
                         player.playerX = block.x - player.playerWidth;
-                    } 
-                    // 玩家向左移動撞到方塊右側
-                    else if (player.movingLeft) {
+                    } else if (player.movingLeft) {
                         player.playerX = block.x + block.width;
                     }
                 }
-                // --- 碰撞邏輯修改結束 ---
             });
-
-            // 玩家與蘑菇碰撞
+    
+            // 最後檢查：根據最終位置確認是否站在地面或方塊上
+            if (Math.abs(player.playerY + player.playerHeight - GROUND_LEVEL) < 1) {
+                isGroundedThisFrame.set(true);
+            } else {
+                for (BlockState block : blocks) {
+                    if (Math.abs(player.playerY + player.playerHeight - block.y) < 1 &&
+                        player.playerX + player.playerWidth > block.x &&
+                        player.playerX < block.x + block.width) {
+                        isGroundedThisFrame.set(true);
+                        break;
+                    }
+                }
+            }
+    
+            // 更新玩家的 isOnGround 狀態
+            player.isOnGround = isGroundedThisFrame.get();
+    
+            System.out.printf("END_TICK[%s]:   y=%d, vy=%.2f, onGround(out)=%b%n%n",
+                playerName, player.playerY, player.velocityY, player.isOnGround);
+    
+            // 3. 玩家與蘑菇碰撞 (這之後的邏輯保持不變)
             mushrooms.forEach(mushroom -> {
                 if (mushroom.isVisible &&
                     new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight)
                     .intersects(new Rectangle(mushroom.x, mushroom.y, mushroom.width, mushroom.height))) {
-                    
+    
                     player.isbigmario = true;
                     mushroom.isVisible = false;
                 }
             });
-
-            // 玩家與 Goomba 碰撞
+    
+            // 4. 玩家與 Goomba 碰撞
             goombas.forEach(goomba -> {
                 if (goomba.isAlive &&
                     new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight)
                     .intersects(new Rectangle(goomba.x, goomba.y, goomba.width, goomba.height))) {
-
+    
                     if (player.velocityY > 0 && (player.playerY + player.playerHeight - player.velocityY) <= goomba.y) {
                         goomba.isAlive = false;
-                        player.velocityY = -6f; // 踩死後小跳一下，使用具體數值
+                        player.velocityY = -6f;
                     } else { 
                         if (player.isbigmario) {
                             player.isbigmario = false;
@@ -273,18 +304,18 @@ public class GameServer {
                 }
             });
         });
-
-        // 火球與物件碰撞
+    
+        // 5. 火球與物件碰撞 (這部分邏輯不變，保持原樣)
         fireballs.forEach(fireball -> {
             if (!fireball.isAlive) return;
             Rectangle fireballBounds = new Rectangle(fireball.x, fireball.y, fireball.width, fireball.height);
-
+    
             blocks.forEach(block -> {
                 if (fireballBounds.intersects(new Rectangle(block.x, block.y, block.width, block.height))) {
                     fireball.isAlive = false;
                 }
             });
-
+    
             goombas.forEach(goomba -> {
                 if (goomba.isAlive && fireballBounds.intersects(new Rectangle(goomba.x, goomba.y, goomba.width, goomba.height))) {
                     fireball.isAlive = false;
@@ -414,9 +445,19 @@ public class GameServer {
                         currentPlayerState.movingLeft = keyStates.getOrDefault("MOVE_LEFT", false);
                         currentPlayerState.movingRight = keyStates.getOrDefault("MOVE_RIGHT", false);
 
-                        if (keyStates.getOrDefault("JUMP", false) && currentPlayerState.isOnGround) {
+                        // 讀取客戶端傳來的跳躍鍵狀態
+                        boolean isJumping = keyStates.getOrDefault("JUMP", false);
+
+                        // 只有在 isOnGround、canJump 皆為 true 時才允許跳躍
+                        if (isJumping && currentPlayerState.isOnGround && currentPlayerState.canJump) {
                             currentPlayerState.velocityY = currentPlayerState.initialJumpVelocity;
                             currentPlayerState.isOnGround = false;
+                            currentPlayerState.canJump = false; // 跳躍後，立刻禁止下一次跳躍
+                        }
+
+                        // 如果玩家放開了跳躍鍵，則重設 canJump 旗標，允許他下次落地後可以再跳
+                        if (!isJumping) {
+                            currentPlayerState.canJump = true;
                         }
                         
                         if (keyStates.getOrDefault("FIREBALL_REQUESTED", false) && currentPlayerState.isbigmario) {
@@ -475,7 +516,8 @@ public class GameServer {
         public boolean movingLeft = false;
         public boolean movingRight = false;
         public boolean isbigmario = false;
-        public boolean gameOver = false; 
+        public boolean gameOver = false;
+        public boolean canJump = true; // <--- 請加上這一行
 
         public PlayerState(String name, int x, int y) {
             this.playerName = name;
