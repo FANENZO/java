@@ -21,7 +21,9 @@ public class GameServer {
     private static final int GROUND_HEIGHT = 120;
     private static final int GROUND_LEVEL = SCREEN_HEIGHT - GROUND_HEIGHT;
 
+    // 使用 ConcurrentHashMap 來儲存玩家狀態，它本身對增刪改查是線程安全的
     private Map<String, PlayerState> playerStates = new ConcurrentHashMap<>();
+    // clients 列表用於遍歷發送，使用 synchronizedList 確保基本操作線程安全，但迭代仍需額外同步
     private List<ClientHandler> clients = Collections.synchronizedList(new ArrayList<>());
 
     private List<BlockState> blocks = Collections.synchronizedList(new ArrayList<>());
@@ -30,6 +32,7 @@ public class GameServer {
 
 
     public GameServer(int port) {
+        // 初始化遊戲物件
         blocks.add(new BlockState(200, 450, 50, 50));
         blocks.add(new ItemBlockState(400, 350, 50, 50, false));
 
@@ -45,31 +48,42 @@ public class GameServer {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("遊戲伺服器已啟動，監聽 Port: " + port);
 
-            startGameLoop();
+            startGameLoop(); // 啟動遊戲主循環，獨立於客戶端連接
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                if (clients.size() < MAX_PLAYERS) {
+                
+                // 注意：clients.size() 在此處作為一個初步的判斷，
+                // 更精確的玩家數量應該從 playerStates.size() 或一個專門的計數器獲取
+                if (clients.size() < MAX_PLAYERS) { 
                     System.out.println("新玩家連線: " + clientSocket.getInetAddress().getHostAddress());
-                    String newPlayerName = "P" + (clients.size() + 1); // 簡單分配 P1, P2...
+                    
+                    String newPlayerName;
+                    int playerNumForPos;
 
-                    // 檢查是否所有客戶端都已經斷開，重置玩家計數器
-                    // 這個邏輯可以更複雜，例如維護一個可用的名稱池，目前簡單處理
-                    if (playerStates.isEmpty() && clients.isEmpty()) {
-                         newPlayerName = "P1";
-                    } else {
+                    // 在分配玩家名稱時，確保 playerStates 不會被同時修改
+                    // 這裡的邏輯是找到下一個可用的 Px 名稱
+                    synchronized (playerStates) { 
                         int nextPlayerNum = 1;
                         while(playerStates.containsKey("P" + nextPlayerNum)) {
                             nextPlayerNum++;
                         }
                         newPlayerName = "P" + nextPlayerNum;
+                        playerNumForPos = nextPlayerNum; // 記錄這個數字用於計算初始位置
                     }
 
-
                     ClientHandler clientThread = new ClientHandler(clientSocket, newPlayerName);
-                    clients.add(clientThread);
-                    playerStates.put(clientThread.playerName, new PlayerState(clientThread.playerName, 50 + clients.size() * 100, GROUND_LEVEL - 50));
+                    
+                    // 在添加 ClientHandler 到 clients 列表時同步
+                    synchronized (clients) { 
+                        clients.add(clientThread);
+                    }
+                    
+                    // 根據分配的玩家數字計算初始位置
+                    playerStates.put(newPlayerName, new PlayerState(newPlayerName, 50 + (playerNumForPos - 1) * 100, GROUND_LEVEL - 50));
+                    
                     new Thread(clientThread).start();
+                    System.out.println("成功為新玩家分配名稱: " + newPlayerName); // Debugging
                 } else {
                     System.out.println("伺服器已滿，拒絕連線: " + clientSocket.getInetAddress().getHostAddress());
                     clientSocket.close();
@@ -94,6 +108,7 @@ public class GameServer {
                 if (elapsed >= TIME_PER_UPDATE) {
                     lastUpdateTime = now;
 
+                    // 遊戲邏輯更新（玩家移動、物體移動、碰撞等）
                     playerStates.forEach((name, player) -> {
                         if (player.gameOver) return;
 
@@ -105,7 +120,7 @@ public class GameServer {
                             player.playerX += player.playerSpeed;
                         }
 
-                        // 2. 應用重力到垂直速度 (這是關鍵)
+                        // 2. 應用重力到垂直速度
                         player.velocityY += player.gravity;
 
                         // 3. 根據垂直速度更新玩家位置
@@ -128,16 +143,17 @@ public class GameServer {
                         if (player.isbigmario && player.playerWidth == 50) {
                             player.playerWidth = 60;
                             player.playerHeight = 60;
-                            player.playerY -= 10;
+                            player.playerY -= 10; // 變大時稍微上移，防止陷地
                         } else if (!player.isbigmario && player.playerWidth == 60) {
                             player.playerWidth = 50;
                             player.playerHeight = 50;
-                            player.playerY += 10;
+                            player.playerY += 10; // 變小時稍微下移
                         }
                     });
 
                     mushrooms.forEach(mushroom -> {
                         if (mushroom.isVisible) {
+                            // 蘑菇簡單的下落邏輯
                             if (mushroom.y < GROUND_LEVEL - mushroom.height) {
                                 mushroom.y += 2;
                             }
@@ -151,15 +167,15 @@ public class GameServer {
                         if (goomba.isAlive) {
                             goomba.x += goomba.speed;
                             if (goomba.x < 0 || goomba.x + goomba.width > SCREEN_WIDTH) {
-                                goomba.speed *= -1;
+                                goomba.speed *= -1; // 碰到邊界反向
                             }
-                            goomba.y = GROUND_LEVEL - goomba.height;
+                            goomba.y = GROUND_LEVEL - goomba.height; // 固定在地面
                         }
                     });
 
-                    handleCollisions();
+                    handleCollisions(); // 處理碰撞
 
-                    broadcastGameState();
+                    broadcastGameState(); // 廣播遊戲狀態給所有客戶端
                 } else {
                     try {
                         long sleepTime = (long) ((TIME_PER_UPDATE - elapsed) / 1_000_000);
@@ -180,7 +196,6 @@ public class GameServer {
 
             // 玩家與磚塊碰撞
             blocks.forEach(block -> {
-                // 檢查碰撞
                 if (player.collidesWith(block.x, block.y, block.width, block.height)) {
                     // 判斷碰撞方向
                     // 玩家從上方下落或跳躍落地到磚塊上
@@ -207,13 +222,13 @@ public class GameServer {
                                 itemBlock.isHit = true;
                                 System.out.println("伺服器：玩家 " + playerName + " 擊中道具磚塊。");
                                 mushrooms.stream()
-                                         .filter(m -> !m.isVisible)
+                                         .filter(m -> !m.isVisible) // 找到第一個不可見的蘑菇
                                          .findFirst()
                                          .ifPresent(m -> {
-                                            m.x = itemBlock.x + (itemBlock.width - m.width) / 2;
-                                            m.y = itemBlock.y - m.height;
-                                            m.isVisible = true;
-                                            System.out.println("伺服器：蘑菇已生成在 " + m.x + "," + m.y);
+                                             m.x = itemBlock.x + (itemBlock.width - m.width) / 2;
+                                             m.y = itemBlock.y - m.height;
+                                             m.isVisible = true;
+                                             System.out.println("伺服器：蘑菇已生成在 " + m.x + "," + m.y);
                                          });
                             }
                         }
@@ -269,6 +284,7 @@ public class GameServer {
     private void broadcastGameState() {
         Map<String, Object> fullGameState = new HashMap<>();
 
+        // 從 ConcurrentHashMap 獲取玩家狀態，這是線程安全的
         Map<String, int[]> playerPositions = new HashMap<>();
         playerStates.forEach((name, state) -> {
             playerPositions.put(name, new int[]{
@@ -282,6 +298,7 @@ public class GameServer {
         });
         fullGameState.put("players", playerPositions);
 
+        // 將磚塊數據打包
         List<Map<String, Object>> blockData = new ArrayList<>();
         blocks.forEach(block -> {
             Map<String, Object> b = new HashMap<>();
@@ -297,6 +314,7 @@ public class GameServer {
         });
         fullGameState.put("blocks", blockData);
 
+        // 將蘑菇數據打包
         List<Map<String, Object>> mushroomData = new ArrayList<>();
         mushrooms.forEach(mushroom -> {
             Map<String, Object> m = new HashMap<>();
@@ -309,6 +327,7 @@ public class GameServer {
         });
         fullGameState.put("mushrooms", mushroomData);
 
+        // 將 Goomba 數據打包
         List<Map<String, Object>> goombaData = new ArrayList<>();
         goombas.forEach(goomba -> {
             Map<String, Object> g = new HashMap<>();
@@ -323,13 +342,18 @@ public class GameServer {
 
         fullGameState.put("groundLevel", GROUND_LEVEL);
 
-        for (ClientHandler client : clients) {
-            try {
-                if (client.out != null) {
-                    client.sendGameState(fullGameState);
+        // *** 關鍵修改：同步 clients 列表的迭代 ***
+        synchronized (clients) { 
+            for (ClientHandler client : clients) {
+                try {
+                    if (client.out != null) {
+                        client.sendGameState(fullGameState);
+                    }
+                } catch (IOException e) {
+                    System.err.println("向客戶端 " + client.playerName + " 發送狀態時發生錯誤: " + e.getMessage());
+                    // 這裡可以選擇將發送失敗的客戶端標記為斷開，以便在安全時從列表中移除
+                    // 但由於 ClientHandler 的 finally 塊會處理移除，這裡暫時不直接移除
                 }
-            } catch (IOException e) {
-                System.err.println("向客戶端 " + client.playerName + " 發送狀態時發生錯誤: " + e.getMessage());
             }
         }
     }
@@ -346,16 +370,17 @@ public class GameServer {
             try {
                 out = new ObjectOutputStream(clientSocket.getOutputStream());
                 in = new ObjectInputStream(clientSocket.getInputStream());
-                out.writeObject(playerName);
+                out.writeObject(playerName); // 向客戶端發送其被分配的名稱
+                out.flush();
             } catch (IOException e) {
                 System.err.println("客戶端 " + playerName + " 串流初始化失敗: " + e.getMessage());
-                closeClientResources();
+                closeClientResources(); // 如果初始化失敗，立即關閉資源
             }
         }
 
         public void sendGameState(Map<String, Object> gameState) throws IOException {
             if (out != null) {
-                out.reset();
+                out.reset(); // 重置序列化流，防止舊對象緩存導致問題
                 out.writeObject(gameState);
                 out.flush();
             }
@@ -365,11 +390,12 @@ public class GameServer {
         public void run() {
             try {
                 while (clientSocket.isConnected()) {
-                    Object clientInput = in.readObject();
+                    Object clientInput = in.readObject(); // 讀取客戶端發送的按鍵狀態
                     PlayerState currentPlayerState = playerStates.get(playerName);
 
                     if (currentPlayerState == null || currentPlayerState.gameOver) {
-                        continue;
+                        // 如果玩家狀態不存在或遊戲已結束，則不處理其輸入
+                        continue; 
                     }
 
                     if (clientInput instanceof Map) {
@@ -383,11 +409,12 @@ public class GameServer {
                             if (currentPlayerState.isOnGround) {
                                 currentPlayerState.velocityY = currentPlayerState.initialJumpVelocity; // 設置初始向上速度
                                 currentPlayerState.isOnGround = false; // 不再在地面上
-                                System.out.println("伺服器：玩家 " + playerName + " 開始跳躍。");
+                                // System.out.println("伺服器：玩家 " + playerName + " 開始跳躍。"); // 頻繁輸出，可註釋
                             }
                         }
-                    } else if (clientInput instanceof String) {
-                        // 兼容舊的字符串指令，建議最終移除此部分
+                    } 
+                    // 兼容舊的字符串指令，建議最終移除此部分以簡化代碼
+                    else if (clientInput instanceof String) {
                         String command = (String) clientInput;
                         System.out.println("伺服器收到來自 " + playerName + " 的舊式指令: " + command);
                         switch (command) {
@@ -416,10 +443,15 @@ public class GameServer {
             } catch (IOException | ClassNotFoundException e) {
                 System.err.println("客戶端 " + playerName + " 連線斷開或讀取錯誤: " + e.getMessage());
             } finally {
+                // 在 finally 塊中安全地移除客戶端資源和狀態
                 closeClientResources();
                 System.out.println("客戶端 " + playerName + " 已斷開連線。");
-                clients.remove(this);
-                playerStates.remove(this.playerName);
+                
+                // *** 關鍵修改：在修改 clients 列表時同步 ***
+                synchronized (clients) { 
+                    clients.remove(this);
+                }
+                playerStates.remove(this.playerName); // ConcurrentHashMap 對移除操作是線程安全的
             }
         }
 
@@ -434,20 +466,24 @@ public class GameServer {
         }
     }
 
+    // ====================================================================================
+    // 以下是遊戲狀態類別，這些類別必須實現 Serializable 接口才能透過網路傳輸
+    // ====================================================================================
+
     private static class PlayerState implements Serializable {
         public String name;
         public int playerX, playerY;
         public int playerWidth = 50;
         public int playerHeight = 50;
-        public int playerSpeed = 3; // *** 降低玩家移動速度 ***
+        public int playerSpeed = 3; 
 
-        public double velocityY = 0; // 垂直速度 (正值向下，負值向上)
-        public double initialJumpVelocity = -15; // 初始跳躍速度 (控制跳躍高度，負值表示向上) *** 調整跳躍力度 ***
-        public double gravity = 0.8; // 重力加速度 (讓下落更平滑)
+        public double velocityY = 0; 
+        public double initialJumpVelocity = -15; 
+        public double gravity = 0.8; 
 
         public boolean movingLeft = false;
         public boolean movingRight = false;
-        public boolean isOnGround = false; // *** 新增標誌，判斷是否在地面上 ***
+        public boolean isOnGround = false; 
 
         public boolean isbigmario = false;
         public boolean gameOver = false;
@@ -456,6 +492,7 @@ public class GameServer {
             this.name = name;
             this.playerX = playerX;
             this.playerY = playerY;
+            // 初始大小根據 isbigmario 設置
             if (this.isbigmario) {
                 this.playerWidth = 60;
                 this.playerHeight = 60;
@@ -465,6 +502,7 @@ public class GameServer {
             }
         }
 
+        // 碰撞檢測方法
         public boolean collidesWith(int otherX, int otherY, int otherWidth, int otherHeight) {
             return playerX < otherX + otherWidth &&
                    playerX + playerWidth > otherX &&
@@ -484,7 +522,7 @@ public class GameServer {
     }
 
     private static class ItemBlockState extends BlockState implements Serializable {
-        public boolean isHit = false;
+        public boolean isHit = false; // 是否已被撞擊
         public ItemBlockState(int x, int y, int width, int height, boolean isHit) {
             super(x, y, width, height);
             this.isHit = isHit;
@@ -493,7 +531,7 @@ public class GameServer {
 
     private static class MushroomState implements Serializable {
         public int x, y, width, height;
-        public boolean isVisible;
+        public boolean isVisible; // 蘑菇是否可見
         public MushroomState(int x, int y, int width, int height, boolean isVisible) {
             this.x = x;
             this.y = y;
@@ -505,8 +543,8 @@ public class GameServer {
 
     private static class GoombaState implements Serializable {
         public int x, y, width, height;
-        public boolean isAlive;
-        public int speed;
+        public boolean isAlive; // Goomba 是否存活
+        public int speed; // Goomba 移動速度
         public GoombaState(int x, int y, int width, int height, boolean isAlive, int speed) {
             this.x = x;
             this.y = y;
