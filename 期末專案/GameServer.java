@@ -4,7 +4,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.net.ServerSocket;
-import java.net.Socket; // 匯入 Rectangle 類別
+import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -30,55 +30,49 @@ public class GameServer {
     private List<GoombaState> goombas = Collections.synchronizedList(new ArrayList<>());
     private List<FireballState> fireballs = Collections.synchronizedList(new ArrayList<>());
 
-
     public GameServer(int port) {
         // 初始化遊戲物件
         blocks.add(new ItemBlockState(410, 380, 50, 50, false));
-
         for (int i = 0; i < 5; i++) {
             blocks.add(new BlockState(60 + i * 200, 380, 50, 50));
         }
-        
-
-
-        mushrooms.add(new MushroomState(0, 0, 30, 30, false)); 
-
+        mushrooms.add(new MushroomState(0, 0, 30, 30, false));
         goombas.add(new GoombaState(600, GROUND_LEVEL - 40, 40, 40, true, -2));
         mushrooms.add(new MushroomState(0, GROUND_LEVEL - 40, 40, 40, true));
 
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("遊戲伺服器已啟動，監聽 Port: " + port);
 
-            startGameLoop(); 
+            startGameLoop();
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
                 
-                if (clients.size() < MAX_PLAYERS) { 
+                if (clients.size() < MAX_PLAYERS) {
                     System.out.println("新玩家連線: " + clientSocket.getInetAddress().getHostAddress());
                     
                     String newPlayerName;
                     int playerNumForPos;
 
-                    synchronized (playerStates) { 
+                    synchronized (playerStates) {
                         int nextPlayerNum = 1;
-                        while(playerStates.containsKey("P" + nextPlayerNum)) {
+                        while (playerStates.containsKey("P" + nextPlayerNum)) {
                             nextPlayerNum++;
                         }
                         newPlayerName = "P" + nextPlayerNum;
-                        playerNumForPos = nextPlayerNum; 
+                        playerNumForPos = nextPlayerNum;
                     }
 
                     ClientHandler clientThread = new ClientHandler(clientSocket, newPlayerName);
                     
-                    synchronized (clients) { 
+                    synchronized (clients) {
                         clients.add(clientThread);
                     }
                     
                     playerStates.put(newPlayerName, new PlayerState(newPlayerName, 50 + (playerNumForPos - 1) * 100, GROUND_LEVEL - 50));
                     
                     new Thread(clientThread).start();
-                    System.out.println("成功為新玩家分配名稱: " + newPlayerName); 
+                    System.out.println("成功為新玩家分配名稱: " + newPlayerName);
                 } else {
                     System.out.println("伺服器已滿，拒絕連線: " + clientSocket.getInetAddress().getHostAddress());
                     clientSocket.close();
@@ -92,11 +86,9 @@ public class GameServer {
 
     private void startGameLoop() {
         new Thread(() -> {
-            
-
             long lastUpdateTime = System.nanoTime();
             final double GAME_FPS = 60.0;
-            final double TIME_PER_UPDATE = 1_000_000_000 / GAME_FPS; 
+            final double TIME_PER_UPDATE = 1_000_000_000 / GAME_FPS;
 
             while (true) {
                 long now = System.nanoTime();
@@ -115,22 +107,10 @@ public class GameServer {
                             player.playerX += player.playerSpeed;
                         }
 
-                        // --- 這是修改的部分 ---
-                        // 只有當玩家不在地面上時，才施加重力
                         if (!player.isOnGround) {
                             player.velocityY += player.gravity;
                         }
-                        // --- 修改結束 ---
-
                         player.playerY += player.velocityY;
-
-                        // if (player.playerY + player.playerHeight >= GROUND_LEVEL) {
-                        //     player.playerY = GROUND_LEVEL - player.playerHeight;
-                        //     player.velocityY = 0;
-                        //     player.isOnGround = true; 
-                        // } else {
-                        //     player.isOnGround = false; 
-                        // }
 
                         if (player.playerX < 0) player.playerX = 0;
                         if (player.playerX + player.playerWidth > SCREEN_WIDTH) player.playerX = SCREEN_WIDTH - player.playerWidth;
@@ -138,7 +118,7 @@ public class GameServer {
                         if (player.isbigmario && player.playerWidth == 50) {
                             player.playerWidth = 60;
                             player.playerHeight = 60;
-                            player.playerY -= 10; 
+                            player.playerY -= 10;
                         } else if (!player.isbigmario && player.playerWidth == 60) {
                             player.playerWidth = 50;
                             player.playerHeight = 50;
@@ -161,27 +141,25 @@ public class GameServer {
                         if (goomba.isAlive) {
                             goomba.x += goomba.speed;
                             if (goomba.x < 0 || goomba.x + goomba.width > SCREEN_WIDTH) {
-                                goomba.speed *= -1; 
+                                goomba.speed *= -1;
                             }
-                            goomba.y = GROUND_LEVEL - goomba.height; 
+                            goomba.y = GROUND_LEVEL - goomba.height;
                         }
                     });
 
                     fireballs.removeIf(fireball -> {
-                        if (!fireball.isAlive) return true; 
+                        if (!fireball.isAlive) return true;
                         
-                        fireball.x += fireball.speedX; 
+                        fireball.x += fireball.speedX;
 
                         if (fireball.x < -fireball.width || fireball.x > SCREEN_WIDTH) {
-                            return true; 
+                            return true;
                         }
-                        return false; 
+                        return false;
                     });
 
-
-                    handleCollisions(); 
-
-                    broadcastGameState(); 
+                    handleCollisions();
+                    broadcastGameState();
                 } else {
                     try {
                         long sleepTime = (long) ((TIME_PER_UPDATE - elapsed) / 1_000_000);
@@ -200,13 +178,12 @@ public class GameServer {
         playerStates.forEach((playerName, player) -> {
             if (player.gameOver)
                 return;
-    
+
             System.out.printf("START_TICK[%s]: y=%d, vy=%.2f, onGround(in)=%b%n",
                 playerName, player.playerY, player.velocityY, player.isOnGround);
-    
+
             java.util.concurrent.atomic.AtomicBoolean isGroundedThisFrame = new java.util.concurrent.atomic.AtomicBoolean(false);
-    
-            // 檢查與地面碰撞
+
             if (player.playerY + player.playerHeight >= GROUND_LEVEL) {
                 player.playerY = GROUND_LEVEL - player.playerHeight;
                 if (player.velocityY > 0) {
@@ -214,24 +191,20 @@ public class GameServer {
                 }
                 isGroundedThisFrame.set(true);
             }
-    
-            // 檢查與方塊碰撞
+
             blocks.forEach(block -> {
                 Rectangle blockBounds = new Rectangle(block.x, block.y, block.width, block.height);
                 Rectangle playerBounds = new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight);
                 Rectangle nextPlayerBoundsV = new Rectangle(player.playerX, (int)(player.playerY + player.velocityY), player.playerWidth, player.playerHeight);
-    
-                // 從上方落在方塊上
+
                 if (player.velocityY >= 0 && nextPlayerBoundsV.intersects(blockBounds) && player.playerY + player.playerHeight <= block.y + 5) {
                     player.playerY = block.y - player.playerHeight;
                     player.velocityY = 0;
                     isGroundedThisFrame.set(true);
-                }
-                // 從下方頂到方塊
-                else if (player.velocityY < 0 && nextPlayerBoundsV.intersects(blockBounds) && player.playerY >= block.y + block.height - 1) {
+                } else if (player.velocityY < 0 && nextPlayerBoundsV.intersects(blockBounds) && player.playerY >= block.y + block.height - 1) {
                     player.playerY = block.y + block.height;
                     player.velocityY = 0;
-    
+
                     if (block instanceof ItemBlockState) {
                         ItemBlockState itemBlock = (ItemBlockState) block;
                         if (!itemBlock.isHit) {
@@ -243,9 +216,7 @@ public class GameServer {
                             });
                         }
                     }
-                }
-                // 側面碰撞
-                else if (playerBounds.intersects(blockBounds)) {
+                } else if (playerBounds.intersects(blockBounds)) {
                     if (player.movingRight) {
                         player.playerX = block.x - player.playerWidth;
                     } else if (player.movingLeft) {
@@ -253,8 +224,7 @@ public class GameServer {
                     }
                 }
             });
-    
-            // 最後檢查：根據最終位置確認是否站在地面或方塊上
+
             if (Math.abs(player.playerY + player.playerHeight - GROUND_LEVEL) < 1) {
                 isGroundedThisFrame.set(true);
             } else {
@@ -267,34 +237,29 @@ public class GameServer {
                     }
                 }
             }
-    
-            // 更新玩家的 isOnGround 狀態
+
             player.isOnGround = isGroundedThisFrame.get();
-    
+
             System.out.printf("END_TICK[%s]:   y=%d, vy=%.2f, onGround(out)=%b%n%n",
                 playerName, player.playerY, player.velocityY, player.isOnGround);
-    
-            // 3. 玩家與蘑菇碰撞 (這之後的邏輯保持不變)
+
             mushrooms.forEach(mushroom -> {
                 if (mushroom.isVisible &&
                     new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight)
                     .intersects(new Rectangle(mushroom.x, mushroom.y, mushroom.width, mushroom.height))) {
-    
                     player.isbigmario = true;
                     mushroom.isVisible = false;
                 }
             });
-    
-            // 4. 玩家與 Goomba 碰撞
+
             goombas.forEach(goomba -> {
                 if (goomba.isAlive &&
                     new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight)
                     .intersects(new Rectangle(goomba.x, goomba.y, goomba.width, goomba.height))) {
-    
                     if (player.velocityY > 0 && (player.playerY + player.playerHeight - player.velocityY) <= goomba.y) {
                         goomba.isAlive = false;
                         player.velocityY = -6f;
-                    } else { 
+                    } else {
                         if (player.isbigmario) {
                             player.isbigmario = false;
                         } else {
@@ -303,35 +268,42 @@ public class GameServer {
                     }
                 }
             });
-        });
-    
-        // 5. 火球與物件碰撞 (這部分邏輯不變，保持原樣)
-        fireballs.forEach(fireball -> {
-            if (!fireball.isAlive) return;
-            Rectangle fireballBounds = new Rectangle(fireball.x, fireball.y, fireball.width, fireball.height);
-    
-            blocks.forEach(block -> {
-                if (fireballBounds.intersects(new Rectangle(block.x, block.y, block.width, block.height))) {
-                    fireball.isAlive = false;
-                }
-            });
-    
-            goombas.forEach(goomba -> {
-                if (goomba.isAlive && fireballBounds.intersects(new Rectangle(goomba.x, goomba.y, goomba.width, goomba.height))) {
-                    fireball.isAlive = false;
-                    goomba.isAlive = false;
-                }
+
+            fireballs.forEach(fireball -> {
+                if (!fireball.isAlive) return;
+                Rectangle fireballBounds = new Rectangle(fireball.x, fireball.y, fireball.width, fireball.height);
+
+                blocks.forEach(block -> {
+                    if (fireballBounds.intersects(new Rectangle(block.x, block.y, block.width, block.height))) {
+                        fireball.isAlive = false;
+                    }
+                });
+
+                goombas.forEach(goomba -> {
+                    if (goomba.isAlive && fireballBounds.intersects(new Rectangle(goomba.x, goomba.y, goomba.width, goomba.height))) {
+                        fireball.isAlive = false;
+                        goomba.isAlive = false;
+                    }
+                });
             });
         });
     }
-
 
     private void broadcastGameState() {
         Map<String, Object> gameState = new HashMap<>();
         
         Map<String, int[]> currentPlayers = new HashMap<>();
         playerStates.forEach((name, player) -> {
-            currentPlayers.put(name, new int[]{player.playerX, player.playerY, player.playerWidth, player.playerHeight, player.isbigmario ? 1 : 0, player.gameOver ? 1 : 0, player.isOnGround ? 1 : 0});
+            currentPlayers.put(name, new int[]{
+                player.playerX,
+                player.playerY,
+                player.playerWidth,
+                player.playerHeight,
+                player.isbigmario ? 1 : 0,
+                player.gameOver ? 1 : 0,
+                player.isOnGround ? 1 : 0,
+                (player.movingLeft || player.movingRight) ? 1 : 0 // 傳送 isMoving 狀態
+            });
         });
         gameState.put("players", currentPlayers);
 
@@ -393,7 +365,7 @@ public class GameServer {
         synchronized (clients) {
             for (ClientHandler clientHandler : new ArrayList<>(clients)) {
                 try {
-                    clientHandler.out.reset(); 
+                    clientHandler.out.reset();
                     clientHandler.out.writeObject(gameState);
                     clientHandler.out.flush();
                 } catch (IOException e) {
@@ -405,7 +377,6 @@ public class GameServer {
             }
         }
     }
-
 
     private class ClientHandler implements Runnable {
         private Socket clientSocket;
@@ -419,7 +390,7 @@ public class GameServer {
             try {
                 out = new ObjectOutputStream(clientSocket.getOutputStream());
                 in = new ObjectInputStream(clientSocket.getInputStream());
-                out.writeObject(playerName); 
+                out.writeObject(playerName);
                 out.flush();
             } catch (IOException e) {
                 System.err.println("為客戶端 " + playerName + " 建立串流失敗: " + e.getMessage());
@@ -431,12 +402,12 @@ public class GameServer {
         public void run() {
             try {
                 while (clientSocket.isConnected()) {
-                    Object clientInput = in.readObject(); 
+                    Object clientInput = in.readObject();
 
                     PlayerState currentPlayerState = playerStates.get(playerName);
 
                     if (currentPlayerState == null || currentPlayerState.gameOver) {
-                        continue; 
+                        continue;
                     }
 
                     if (clientInput instanceof Map) {
@@ -445,43 +416,40 @@ public class GameServer {
                         currentPlayerState.movingLeft = keyStates.getOrDefault("MOVE_LEFT", false);
                         currentPlayerState.movingRight = keyStates.getOrDefault("MOVE_RIGHT", false);
 
-                        // 讀取客戶端傳來的跳躍鍵狀態
                         boolean isJumping = keyStates.getOrDefault("JUMP", false);
 
-                        // 只有在 isOnGround、canJump 皆為 true 時才允許跳躍
                         if (isJumping && currentPlayerState.isOnGround && currentPlayerState.canJump) {
                             currentPlayerState.velocityY = currentPlayerState.initialJumpVelocity;
                             currentPlayerState.isOnGround = false;
-                            currentPlayerState.canJump = false; // 跳躍後，立刻禁止下一次跳躍
+                            currentPlayerState.canJump = false;
                         }
 
-                        // 如果玩家放開了跳躍鍵，則重設 canJump 旗標，允許他下次落地後可以再跳
                         if (!isJumping) {
                             currentPlayerState.canJump = true;
                         }
-                        
+
                         if (keyStates.getOrDefault("FIREBALL_REQUESTED", false) && currentPlayerState.isbigmario) {
-                                int fireballSpeed = 10; 
-                                int fireballWidth = 20;
-                                int fireballHeight = 20;
-                                
-                                int fireballX;
-                                int initialFireballSpeedX;
+                            int fireballSpeed = 10;
+                            int fireballWidth = 20;
+                            int fireballHeight = 20;
+                            
+                            int fireballX;
+                            int initialFireballSpeedX;
 
-                                if (currentPlayerState.movingRight || (!currentPlayerState.movingLeft && !currentPlayerState.movingRight)) {
-                                    fireballX = currentPlayerState.playerX + currentPlayerState.playerWidth;
-                                    initialFireballSpeedX = fireballSpeed;
-                                } else { 
-                                    fireballX = currentPlayerState.playerX - fireballWidth;
-                                    initialFireballSpeedX = -fireballSpeed;
-                                }
+                            if (currentPlayerState.movingRight || (!currentPlayerState.movingLeft && !currentPlayerState.movingRight)) {
+                                fireballX = currentPlayerState.playerX + currentPlayerState.playerWidth;
+                                initialFireballSpeedX = fireballSpeed;
+                            } else {
+                                fireballX = currentPlayerState.playerX - fireballWidth;
+                                initialFireballSpeedX = -fireballSpeed;
+                            }
 
-                                int fireballY = currentPlayerState.playerY + currentPlayerState.playerHeight / 2 - fireballHeight / 2;
-                                
-                                FireballState newFireball = new FireballState(fireballX, fireballY, fireballWidth, fireballHeight, initialFireballSpeedX, playerName);
-                                fireballs.add(newFireball);
+                            int fireballY = currentPlayerState.playerY + currentPlayerState.playerHeight / 2 - fireballHeight / 2;
+                            
+                            FireballState newFireball = new FireballState(fireballX, fireballY, fireballWidth, fireballHeight, initialFireballSpeedX, playerName);
+                            fireballs.add(newFireball);
                         }
-                    } 
+                    }
                 }
             } catch (IOException | ClassNotFoundException e) {
                 System.err.println("客戶端 " + playerName + " 連線斷開或讀取錯誤: " + e.getMessage());
@@ -489,7 +457,7 @@ public class GameServer {
                 closeClientResources();
                 System.out.println("客戶端 " + playerName + " 已斷開連線。");
                 clients.remove(this);
-                playerStates.remove(this.playerName); 
+                playerStates.remove(this.playerName);
             }
         }
 
@@ -510,14 +478,14 @@ public class GameServer {
         public int playerWidth, playerHeight;
         public int playerSpeed = 5;
         public float velocityY = 0;
-        public float gravity = 0.5f; 
-        public float initialJumpVelocity = -12f; 
+        public float gravity = 0.5f;
+        public float initialJumpVelocity = -12f;
         public boolean isOnGround = false;
         public boolean movingLeft = false;
         public boolean movingRight = false;
         public boolean isbigmario = false;
         public boolean gameOver = false;
-        public boolean canJump = true; // <--- 請加上這一行
+        public boolean canJump = true;
 
         public PlayerState(String name, int x, int y) {
             this.playerName = name;
@@ -539,7 +507,7 @@ public class GameServer {
     }
 
     private static class ItemBlockState extends BlockState {
-        public boolean isHit = false; 
+        public boolean isHit = false;
         public ItemBlockState(int x, int y, int width, int height, boolean isHit) {
             super(x, y, width, height);
             this.isHit = isHit;
@@ -548,7 +516,7 @@ public class GameServer {
 
     private static class MushroomState implements Serializable {
         public int x, y, width, height;
-        public boolean isVisible; 
+        public boolean isVisible;
         public MushroomState(int x, int y, int width, int height, boolean isVisible) {
             this.x = x;
             this.y = y;
@@ -560,8 +528,8 @@ public class GameServer {
 
     private static class GoombaState implements Serializable {
         public int x, y, width, height;
-        public boolean isAlive; 
-        public int speed; 
+        public boolean isAlive;
+        public int speed;
         public GoombaState(int x, int y, int width, int height, boolean isAlive, int speed) {
             this.x = x;
             this.y = y;
@@ -574,9 +542,9 @@ public class GameServer {
 
     private static class FireballState implements Serializable {
         public int x, y, width, height;
-        public int speedX; 
+        public int speedX;
         public boolean isAlive;
-        public String ownerPlayerName; 
+        public String ownerPlayerName;
 
         public FireballState(int x, int y, int width, int height, int speedX, String ownerPlayerName) {
             this.x = x;

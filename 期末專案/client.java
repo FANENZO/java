@@ -71,8 +71,8 @@ public class client extends JPanel implements KeyListener, Runnable {
             bigplayerImage = new ImageIcon("images/bigmario.png").getImage();
             playerjump = new ImageIcon("images/mario_jump.png").getImage();
             bigplayerjump = new ImageIcon("images/bigmario_jump.png").getImage();
-            playerGif = new ImageIcon("images/mario.gif");
-            bigplayerGif = new ImageIcon("images/bigmario.gif");
+            playerGif = new ImageIcon("images/output-onlinegiftools.gif");
+            bigplayerGif = new ImageIcon("images/bigmariorun.gif");
             gameover = new ImageIcon("images/gameover.png").getImage();
             mushroomImage = new ImageIcon("images/mushroom.png").getImage();
             goombaImage = new ImageIcon("images/goomba.png").getImage();
@@ -197,6 +197,8 @@ public class client extends JPanel implements KeyListener, Runnable {
                 int pH = pos[3];
                 boolean isBigMario = (pos[4] == 1);
                 boolean isGameOver = (pos[5] == 1);
+                boolean isOnGround = (pos[6] == 1); // 讀取新的 isOnGround 狀態
+                boolean isMoving = (pos[7] == 1); // 新增移動狀態
 
                 if (isGameOver) {
                     if (name.equals(myPlayerName) && gameover != null) {
@@ -206,8 +208,7 @@ public class client extends JPanel implements KeyListener, Runnable {
                     return; 
                 }
 
-                // client.java -> paintComponent()
-                boolean isOnGround = (pos[6] == 1); // 讀取新的 isOnGround 狀態
+                
 
                 if (isGameOver) {
                     if (name.equals(myPlayerName) && gameover != null) {
@@ -221,6 +222,9 @@ public class client extends JPanel implements KeyListener, Runnable {
                 // 判斷條件從 pY + pH < groundLevel 改為 !isOnGround
                 if (!isOnGround) { // 如果伺服器說不在地面上，就顯示跳躍圖
                     currentImage = isBigMario ? bigplayerjump : playerjump;
+                } else if (isMoving) {
+                    currentImage = isBigMario ? bigplayerGif.getImage() : playerGif.getImage();
+
                 } else { // 否則，顯示站立圖
                     currentImage = isBigMario ? bigplayerImage : playerImage;
                 }
