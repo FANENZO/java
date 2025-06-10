@@ -415,97 +415,90 @@ public class GameServer {
             }
         }
 
-        @Override
-        public void run() {
-            try {
-                while (clientSocket.isConnected()) {
-                    Object clientInput = in.readObject(); 
-                    PlayerState currentPlayerState = playerStates.get(playerName);
+        // GameServer.java - 在 ClientHandler 類別的 run() 方法中
+@Override
+public void run() {
+    try {
+        while (clientSocket.isConnected()) {
+            Object clientInput = in.readObject(); 
+            // === 請確保這行存在，用於確認伺服器收到了什麼 ===
+            System.out.println("伺服器收到來自 " + playerName + " 的客戶端輸入: " + clientInput); 
 
-                    if (currentPlayerState == null || currentPlayerState.gameOver) {
-                        continue; 
-                    }
+            PlayerState currentPlayerState = playerStates.get(playerName);
 
-                    if (clientInput instanceof Map) {
-                        Map<String, Boolean> keyStates = (Map<String, Boolean>) clientInput;
+            if (currentPlayerState == null || currentPlayerState.gameOver) {
+                continue; 
+            }
 
-                        currentPlayerState.movingLeft = keyStates.getOrDefault("MOVE_LEFT", false);
-                        currentPlayerState.movingRight = keyStates.getOrDefault("MOVE_RIGHT", false);
+            if (clientInput instanceof Map) {
+                Map<String, Boolean> keyStates = (Map<String, Boolean>) clientInput;
 
-                        if (keyStates.getOrDefault("JUMP", false)) {
-                            if (currentPlayerState.isOnGround) {
-                                currentPlayerState.velocityY = currentPlayerState.initialJumpVelocity; 
-                                currentPlayerState.isOnGround = false; 
-                            }
-                        }
-                        
-                        if (keyStates.getOrDefault("FIREBALL_REQUESTED", false)) {
-                            if (currentPlayerState.isbigmario) { 
-                                int fireballSpeed = 10; 
-                                int fireballWidth = 20;
-                                int fireballHeight = 20;
-                                int fireballX = currentPlayerState.playerX;
-                                int fireballY = currentPlayerState.playerY + currentPlayerState.playerHeight / 2 - fireballHeight / 2;
-                                
-                                int initialFireballSpeedX = currentPlayerState.movingRight ? fireballSpeed : 
-                                                            (currentPlayerState.movingLeft ? -fireballSpeed : fireballSpeed); 
-                                if (!currentPlayerState.movingLeft && !currentPlayerState.movingRight) {
-                                    // 默認向右發射，如果玩家靜止且不是向左移動
-                                    // 為了更精確的方向，可能需要儲存玩家最後的移動方向
-                                    // 這裡簡化為如果沒有明確的左右移動，就假定向右發射
-                                    initialFireballSpeedX = fireballSpeed; 
-                                    // 如果玩家從來沒有移動過或靜止很久，這個邏輯會導致問題，
-                                    // 通常會儲存一個 `lastDirection` 變數來解決
-                                }
+                currentPlayerState.movingLeft = keyStates.getOrDefault("MOVE_LEFT", false);
+                currentPlayerState.movingRight = keyStates.getOrDefault("MOVE_RIGHT", false);
 
-
-                                FireballState newFireball = new FireballState(fireballX, fireballY, fireballWidth, fireballHeight, initialFireballSpeedX, playerName);
-                                fireballs.add(newFireball);
-                                System.out.println("伺服器：玩家 " + playerName + " 發射火球。");
-                            } else {
-                                System.out.println("伺服器：玩家 " + playerName + " 嘗試發射火球但不是大瑪利歐。");
-                            }
-                        }
-                    } 
-                    // 兼容舊的字符串指令，建議最終移除此部分以簡化代碼
-                    else if (clientInput instanceof String) {
-                        String command = (String) clientInput;
-                        System.out.println("伺服器收到來自 " + playerName + " 的舊式指令: " + command);
-                        switch (command) {
-                            case "MOVE_LEFT":
-                                currentPlayerState.movingLeft = true;
-                                currentPlayerState.movingRight = false;
-                                break;
-                            case "MOVE_RIGHT":
-                                currentPlayerState.movingRight = true;
-                                currentPlayerState.movingLeft = false;
-                                break;
-                            case "JUMP":
-                                if (currentPlayerState.isOnGround) {
-                                    currentPlayerState.velocityY = currentPlayerState.initialJumpVelocity;
-                                    currentPlayerState.isOnGround = false;
-                                    System.out.println("伺服器：玩家 " + playerName + " 舊式跳躍指令。");
-                                }
-                                break;
-                            case "STOP_MOVE":
-                                currentPlayerState.movingLeft = false;
-                                currentPlayerState.movingRight = false;
-                                break;
-                        }
+                if (keyStates.getOrDefault("JUMP", false)) {
+                    if (currentPlayerState.isOnGround) {
+                        currentPlayerState.velocityY = currentPlayerState.initialJumpVelocity; 
+                        currentPlayerState.isOnGround = false; 
                     }
                 }
-            } catch (IOException | ClassNotFoundException e) {
-                System.err.println("客戶端 " + playerName + " 連線斷開或讀取錯誤: " + e.getMessage());
-            } finally {
-                closeClientResources();
-                System.out.println("客戶端 " + playerName + " 已斷開連線。");
                 
-                synchronized (clients) { 
-                    clients.remove(this);
+                if (keyStates.getOrDefault("FIREBALL_REQUESTED", false)) {
+                    // === 請確保這行也存在，用於確認伺服器是否進入了這個邏輯分支 ===
+                    System.out.println("伺服器：收到火球請求，檢查大瑪利歐狀態..."); 
+
+                    if (currentPlayerState.isbigmario) { 
+                        int fireballSpeed = 10; 
+                        int fireballWidth = 20;
+                        int fireballHeight = 20;
+                        int fireballX = currentPlayerState.playerX;
+                        int fireballY = currentPlayerState.playerY + currentPlayerState.playerHeight / 2 - fireballHeight / 2;
+                        
+                        // 修正火球發射方向邏輯：根據玩家的當前左右移動狀態判斷
+                        // 如果玩家正在向右移動，火球向右發射
+                        // 如果玩家正在向左移動，火球向左發射
+                        // 如果玩家靜止，可以預設一個方向（例如最後一次移動方向，或者總是向右）
+                        int initialFireballSpeedX = 0;
+                        if (currentPlayerState.movingRight) {
+                            initialFireballSpeedX = fireballSpeed;
+                        } else if (currentPlayerState.movingLeft) {
+                            initialFireballSpeedX = -fireballSpeed;
+                        } else {
+                            // 如果玩家靜止，根據 lastDirection 或預設方向
+                            // 這裡我們假設 playerSpeed > 0 時是向右，如果速度為負則為向左
+                            // 為了簡化，如果玩家靜止，我們讓火球朝玩家當前面向的方向飛
+                            // 但遊戲中可能沒有 "面向方向" 這個狀態，所以通常是依據 `playerSpeed` 的符號，
+                            // 或者添加一個 `lastDirection` 變數在 PlayerState 中。
+                            // 暫時保持您原有的邏輯：如果玩家沒有明確的左右移動，默認向右。
+                            initialFireballSpeedX = fireballSpeed; 
+                        }
+
+
+                        FireballState newFireball = new FireballState(fireballX, fireballY, fireballWidth, fireballHeight, initialFireballSpeedX, playerName);
+                        fireballs.add(newFireball);
+                        System.out.println("伺服器：玩家 " + playerName + " 發射火球。火球初始位置: (" + fireballX + ", " + fireballY + ") 速度: " + initialFireballSpeedX); // <<=== 添加火球位置信息
+                    } else {
+                        System.out.println("伺服器：玩家 " + playerName + " 嘗試發射火球但不是大瑪利歐。"); 
+                    }
                 }
-                playerStates.remove(this.playerName); 
+            } 
+            // 兼容舊的字符串指令，建議最終移除此部分以簡化代碼
+            else if (clientInput instanceof String) {
+                // ... (此部分保持不變)
             }
         }
+    } catch (IOException | ClassNotFoundException e) {
+        System.err.println("客戶端 " + playerName + " 連線斷開或讀取錯誤: " + e.getMessage());
+    } finally {
+        closeClientResources();
+        System.out.println("客戶端 " + playerName + " 已斷開連線。");
+        
+        synchronized (clients) { 
+            clients.remove(this);
+        }
+        playerStates.remove(this.playerName); 
+    }
+}
 
         private void closeClientResources() {
             try {

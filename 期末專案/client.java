@@ -126,10 +126,10 @@ public class client extends JPanel implements KeyListener, Runnable {
             try {
                 while (socket.isConnected()) {
                     Object serverData = in.readObject();
-                    System.out.println("ServerReader 接收到數據: " + serverData.getClass().getName()); // DEBUG
+                    //System.out.println("ServerReader 接收到數據: " + serverData.getClass().getName()); // DEBUG
                     if (serverData instanceof Map) {
                         Map<String, Object> fullGameState = (Map<String, Object>) serverData;
-                        System.out.println("ServerReader 數據為 Map，包含鍵: " + fullGameState.keySet()); // DEBUG
+                        //System.out.println("ServerReader 數據為 Map，包含鍵: " + fullGameState.keySet()); // DEBUG
 
                         allPlayerPositions = (Map<String, int[]>) fullGameState.get("players");
                         receivedBlocks = (List<Map<String, Object>>) fullGameState.get("blocks");
@@ -137,7 +137,7 @@ public class client extends JPanel implements KeyListener, Runnable {
                         receivedGoombas = (List<Map<String, Object>>) fullGameState.get("goombas");
                         receivedFireballs = (List<Map<String, Object>>) fullGameState.get("fireballs");
                         groundLevel = (int) fullGameState.get("groundLevel");
-                        System.out.println("更新遊戲狀態。玩家數量: " + (allPlayerPositions != null ? allPlayerPositions.size() : 0)); // DEBUG
+                        //System.out.println("更新遊戲狀態。玩家數量: " + (allPlayerPositions != null ? allPlayerPositions.size() : 0)); // DEBUG
 
                         if (allPlayerPositions != null && allPlayerPositions.containsKey(assignedPlayerName)) {
                             int[] currentPlayerStateArray = allPlayerPositions.get(assignedPlayerName);
@@ -274,7 +274,7 @@ public class client extends JPanel implements KeyListener, Runnable {
                     }
                 }
             }
-            System.out.println("PaintComponent: 正在繪製遊戲物體。"); // DEBUG
+            //System.out.println("PaintComponent: 正在繪製遊戲物體。"); // DEBUG
         } else {
             // 如果還沒有收到伺服器狀態，顯示連接訊息
             g.setColor(Color.WHITE);
@@ -333,12 +333,28 @@ public class client extends JPanel implements KeyListener, Runnable {
         }
     }
 
+    private void sendPlayerInput() throws IOException {
+        Map<String, Boolean> keyStates = new HashMap<>();
+        synchronized (pressedKeys) {
+            keyStates.put("MOVE_LEFT", pressedKeys.contains(KeyEvent.VK_A));
+            keyStates.put("MOVE_RIGHT", pressedKeys.contains(KeyEvent.VK_D));
+            keyStates.put("JUMP", pressedKeys.contains(KeyEvent.VK_SPACE));
+    
+            keyStates.put("FIREBALL_REQUESTED", fireballRequested); 
+            System.out.println("客戶端：準備發送 keyStates: " + keyStates); // <<=== 添加此行
+            fireballRequested = false; // 發送後立即重置為 false，確保每次按下只發射一次火球
+        }
+        out.writeObject(keyStates);
+        out.flush();
+    }
+
 @Override
 public void keyPressed(KeyEvent e) {
     synchronized (pressedKeys) {
         pressedKeys.add(e.getKeyCode());
         if (e.getKeyCode() == KeyEvent.VK_E) {
             fireballRequested = true; // 按下 E 觸發發射火球請求
+            System.out.println("客戶端：按下 E 鍵，fireballRequested 設為 true。"); // <<=== 添加此行
         }
     }
 }
