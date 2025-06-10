@@ -67,7 +67,18 @@ public class client extends JPanel implements KeyListener, Runnable {
             gameover = new ImageIcon("images/gameover.png").getImage();
             //fireballImage = new ImageIcon("images/Player_fireball.png").getImage(); 
 
-            fireballImage = new ImageIcon("images/Player_fireball.png").getImage(); // 你目前的寫法
+            //fireballImage = new ImageIcon("images/Player_fireball.png").getImage(); // 你目前的寫法
+            try {
+                fireballImage = new ImageIcon(getClass().getResource("/images/Player_fireball.png")).getImage();
+                if (fireballImage == null) {
+                    System.err.println("客戶端：使用 getClass().getResource(\"/images/Player_fireball.png\") 載入圖片失敗！(fireballImage 為 null)");
+                } else {
+                    System.out.println("客戶端：使用 getClass().getResource(\"/images/Player_fireball.png\") 載入圖片成功。");
+                }
+            } catch (Exception e) {
+                System.err.println("客戶端：載入火球圖片時發生嚴重錯誤: " + e.getMessage());
+                e.printStackTrace(); // 印出堆疊追蹤
+            }
     if (fireballImage == null) {
         System.err.println("客戶端：fireball.png 圖片載入失敗！(fireballImage 為 null)");
     } else {
@@ -162,18 +173,25 @@ public class client extends JPanel implements KeyListener, Runnable {
         }
         System.out.println("客戶端：當前火球數量: " + currentFireballs.size()); // 新增這行
 
-        synchronized (currentFireballs) {
-            for (Map<String, Object> fireball : currentFireballs) {
-                int fbX = (int) fireball.get("x");
-                int fbY = (int) fireball.get("y");
-                int fbWidth = (int) fireball.get("width");
-                int fbHeight = (int) fireball.get("height");
-                //boolean fbAlive = (boolean) fireball.get("isAlive");
-
-                if (  fireballImage != null) {
-                    g.drawImage(fireballImage, fbX, fbY, fbWidth, fbHeight, this);
+        if (fireballImage != null) { // 確保圖片已載入
+            synchronized (currentFireballs) {
+                System.out.println("客戶端繪圖：嘗試繪製火球，數量: " + currentFireballs.size()); // 新增偵錯
+                for (Map<String, Object> fireball : currentFireballs) {
+                    Boolean fbAlive = (Boolean) fireball.getOrDefault("isAlive", false);
+                    if (fbAlive) { // 只繪製活著的火球
+                        int fbX = (int) fireball.getOrDefault("x", 0);
+                        int fbY = (int) fireball.getOrDefault("y", 0);
+                        int fbWidth = (int) fireball.getOrDefault("width", 20);
+                        int fbHeight = (int) fireball.getOrDefault("height", 20);
+    
+                        // 繪製火球圖片
+                        g.drawImage(fireballImage, fbX, fbY, fbWidth, fbHeight, this);
+                        System.out.println("客戶端繪圖：繪製火球於 X:" + fbX + ", Y:" + fbY + ", 寬:" + fbWidth + ", 高:" + fbHeight); // 新增偵錯
+                    }
                 }
             }
+        } else {
+            System.err.println("客戶端繪圖：fireballImage 為 null，無法繪製火球。"); // 新增偵錯
         }
 
         synchronized (playerPositions) {
