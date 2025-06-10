@@ -35,12 +35,13 @@ public class GameServer {
         blocks.add(new ItemBlockState(400, 350, 50, 50, false));
 
         for (int i = 0; i < 5; i++) {
-            blocks.add(new BlockState(50 + i * 100, GROUND_LEVEL - 130, 50, 50));
+            blocks.add(new BlockState(50 + i * 100, GROUND_LEVEL - 100, 50, 50));
         }
 
-        mushrooms.add(new MushroomState(0, 0, 30, 30, false));
+        mushrooms.add(new MushroomState(0, 0, 30, 30, false)); // 初始化為不可見
 
-        goombas.add(new GoombaState(600, GROUND_LEVEL - 40, 40, 40, true, -2));
+        //goombas.add(new GoombaState(600, GROUND_LEVEL - 40, 40, 40, true, -2));
+        mushrooms.add(new MushroomState(600, GROUND_LEVEL - 40, 40, 40, true));
 
 
         try (ServerSocket serverSocket = new ServerSocket(port)) {
@@ -132,14 +133,14 @@ public class GameServer {
                         if (player.playerX + player.playerWidth > SCREEN_WIDTH) player.playerX = SCREEN_WIDTH - player.playerWidth;
 
                         // 6. 更新玩家大小 (如果吃到了蘑菇或受傷)
-                        if (player.isbigmario && player.playerWidth == 50) {
+                        if (player.isbigmario && player.playerWidth == 50) { // 變大
                             player.playerWidth = 60;
                             player.playerHeight = 60;
-                            player.playerY -= 10; 
-                        } else if (!player.isbigmario && player.playerWidth == 60) {
+                            player.playerY -= 10; // 向上微調以保持底部對齊
+                        } else if (!player.isbigmario && player.playerWidth == 60) { // 變回小瑪利歐
                             player.playerWidth = 50;
                             player.playerHeight = 50;
-                            player.playerY += 10; 
+                            player.playerY += 10; // 向下微調以保持底部對齊
                         }
                     });
 
@@ -157,23 +158,25 @@ public class GameServer {
                     goombas.forEach(goomba -> {
                         if (goomba.isAlive) {
                             goomba.x += goomba.speed;
+                            // 簡易邊界反彈
                             if (goomba.x < 0 || goomba.x + goomba.width > SCREEN_WIDTH) {
                                 goomba.speed *= -1; 
                             }
-                            goomba.y = GROUND_LEVEL - goomba.height; 
+                            goomba.y = GROUND_LEVEL - goomba.height; // 始終保持在地面上
                         }
                     });
 
                     fireballs.removeIf(fireball -> {
-                        if (!fireball.isAlive) return true; 
+                        if (!fireball.isAlive) return true; // 如果火球已經標記為不活躍，則移除
                         
-                        fireball.x += fireball.speedX; 
+                        fireball.x += fireball.speedX; // 更新火球水平位置
 
+                        // 檢查火球是否出界
                         if (fireball.x < -fireball.width || fireball.x > SCREEN_WIDTH) {
                             System.out.println("伺服器：火球出界，移除。");
-                            return true; 
+                            return true; // 出界則移除
                         }
-                        return false; 
+                        return false; // 否則保留
                     });
 
 
@@ -200,46 +203,40 @@ public class GameServer {
 
             // 玩家與磚塊碰撞
             blocks.forEach(block -> {
-                if (player.collidesWith(block.x, block.y, block.width, block.height)) {
-                    if (player.velocityY >= 0 && 
-                        player.playerY + player.playerHeight - player.velocityY <= block.y && 
-                        player.playerX < block.x + block.width && player.playerX + player.playerWidth > block.x) {
-
-                        player.playerY = block.y - player.playerHeight; 
-                        player.velocityY = 0; 
-                        player.isOnGround = true; 
-                    }
-                    else if (player.velocityY < 0 && 
-                             player.playerY - player.velocityY >= block.y + block.height && 
-                             player.playerX < block.x + block.width && player.playerX + player.playerWidth > block.x) {
-
-                        player.playerY = block.y + block.height; 
-                        player.velocityY = 0; 
-                        player.isOnGround = false; 
-
-                        if (block instanceof ItemBlockState) {
-                            ItemBlockState itemBlock = (ItemBlockState) block;
-                            if (!itemBlock.isHit) {
-                                itemBlock.isHit = true;
-                                System.out.println("伺服器：玩家 " + playerName + " 擊中道具磚塊。");
-                                mushrooms.stream()
-                                         .filter(m -> !m.isVisible) 
-                                         .findFirst()
-                                         .ifPresent(m -> {
-                                             m.x = itemBlock.x + (itemBlock.width - m.width) / 2;
-                                             m.y = itemBlock.y - m.height;
-                                             m.isVisible = true;
-                                             System.out.println("伺服器：蘑菇已生成在 " + m.x + "," + m.y);
-                                         });
-                            }
-                        }
-                    }
-                    else if (player.playerY < block.y + block.height && player.playerY + player.playerHeight > block.y) {
-                        if (player.playerX + player.playerWidth > block.x && player.playerX < block.x) {
-                            player.playerX = block.x - player.playerWidth;
-                        }
-                        else if (player.playerX < block.x + block.width && player.playerX + player.playerWidth > block.x + block.width) {
-                            player.playerX = block.x + block.width;
+                // 檢查玩家底部是否與磚塊頂部碰撞 (用於站立)
+                if (player.velocityY >= 0 && 
+                    player.playerX < block.x + block.width &&
+                    player.playerX + player.playerWidth > block.x &&
+                    player.playerY + player.playerHeight <= block.y + player.velocityY && // 確保從上方接觸
+                    player.playerY + player.playerHeight + player.velocityY >= block.y) {
+                    
+                    player.playerY = block.y - player.playerHeight; // 落在磚塊上
+                    player.velocityY = 0;
+                    player.isOnGround = true;
+                }
+                // 檢查玩家頭部是否與磚塊底部碰撞 (用於頂磚塊)
+                else if (player.velocityY < 0 && 
+                         player.playerX < block.x + block.width &&
+                         player.playerX + player.playerWidth > block.x &&
+                         player.playerY >= block.y + block.height + player.velocityY && // 確保從下方接觸
+                         player.playerY + player.velocityY <= block.y + block.height) {
+                    
+                    player.playerY = block.y + block.height; // 撞到磚塊底部
+                    player.velocityY = 0; // 反彈
+                    
+                    if (block instanceof ItemBlockState) {
+                        ItemBlockState itemBlock = (ItemBlockState) block;
+                        if (!itemBlock.isHit) {
+                            itemBlock.isHit = true;
+                            // 觸發蘑菇出現邏輯
+                            mushrooms.forEach(mushroom -> {
+                                if (!mushroom.isVisible) { // 找到第一個不可見的蘑菇
+                                    mushroom.x = block.x;
+                                    mushroom.y = block.y - mushroom.height; // 出現在磚塊上方
+                                    mushroom.isVisible = true;
+                                    System.out.println("伺服器：蘑菇出現於 (" + mushroom.x + ", " + mushroom.y + ")");
+                                }
+                            });
                         }
                     }
                 }
@@ -247,306 +244,278 @@ public class GameServer {
 
             // 玩家與蘑菇碰撞
             mushrooms.forEach(mushroom -> {
-                if (mushroom.isVisible && player.collidesWith(mushroom.x, mushroom.y, mushroom.width, mushroom.height)) {
+                if (mushroom.isVisible &&
+                    player.playerX < mushroom.x + mushroom.width &&
+                    player.playerX + player.playerWidth > mushroom.x &&
+                    player.playerY < mushroom.y + mushroom.height &&
+                    player.playerY + player.playerHeight > mushroom.y) {
+                    
                     player.isbigmario = true;
-                    mushroom.isVisible = false;
-                    System.out.println("伺服器：玩家 " + playerName + " 吃到蘑菇。");
+                    mushroom.isVisible = false; // 蘑菇消失
+                    System.out.println("伺服器：玩家 " + playerName + " 吃到蘑菇，變大瑪利歐。");
                 }
             });
 
             // 玩家與 Goomba 碰撞
             goombas.forEach(goomba -> {
-                if (goomba.isAlive && player.collidesWith(goomba.x, goomba.y, goomba.width, goomba.height)) {
-                    if (player.velocityY >= 0 && 
-                        player.playerY + player.playerHeight - player.velocityY <= goomba.y && player.playerY + player.playerHeight > goomba.y) {
+                if (goomba.isAlive &&
+                    player.playerX < goomba.x + goomba.width &&
+                    player.playerX + player.playerWidth > goomba.x &&
+                    player.playerY < goomba.y + goomba.height &&
+                    player.playerY + player.playerHeight > goomba.y) {
+
+                    // 判斷是否踩到 Goomba (玩家從上方落下，Goomba 死亡)
+                    if (player.velocityY > 0 && player.playerY + player.playerHeight - player.velocityY < goomba.y) {
                         goomba.isAlive = false;
-                        System.out.println("伺服器：玩家 " + playerName + " 踩死 Goomba。");
-                        player.velocityY = player.initialJumpVelocity / 2; 
-                        player.isOnGround = false;
-                    } else { 
+                        player.velocityY = -player.initialJumpVelocity / 2;// 踩死後小跳一下
+                        System.out.println("伺服器：玩家 " + playerName + " 踩死了 Goomba。");
+                    } else { // 被 Goomba 撞到
                         if (player.isbigmario) {
-                            player.isbigmario = false;
-                            System.out.println("伺服器：玩家 " + playerName + " 受到傷害，變回小瑪利歐。");
+                            player.isbigmario = false; // 變回小瑪利歐
+                            System.out.println("伺服器：玩家 " + playerName + " 被 Goomba 撞到，變回小瑪利歐。");
                         } else {
-                            player.gameOver = true;
-                            System.out.println("伺服器：玩家 " + playerName + " 遊戲結束 (被 Goomba 撞到)。");
+                            player.gameOver = true; // 遊戲結束
+                            System.out.println("伺服器：玩家 " + playerName + " 遊戲結束。");
                         }
                     }
                 }
             });
         });
 
-        // 火球與磚塊的碰撞
+        // 火球與磚塊、Goomba 碰撞
         fireballs.forEach(fireball -> {
             if (!fireball.isAlive) return;
 
+            // 火球與磚塊碰撞
             blocks.forEach(block -> {
                 if (fireball.collidesWith(block.x, block.y, block.width, block.height)) {
-                    fireball.isAlive = false;
-                    System.out.println("伺服器：火球擊中磚塊，消失。");
+                    fireball.isAlive = false; // 火球消失
+                    System.out.println("伺服器：火球撞到磚塊，消失。");
+                    // 可以添加磚塊被火球打爆的邏輯
                 }
             });
-        });
 
-        // 火球與 Goomba 的碰撞
-        fireballs.forEach(fireball -> {
-            if (!fireball.isAlive) return; 
-
+            // 火球與 Goomba 碰撞
             goombas.forEach(goomba -> {
                 if (goomba.isAlive && fireball.collidesWith(goomba.x, goomba.y, goomba.width, goomba.height)) {
-                    goomba.isAlive = false; 
-                    fireball.isAlive = false; 
-                    System.out.println("伺服器：火球擊敗 Goomba！");
+                    fireball.isAlive = false; // 火球消失
+                    goomba.isAlive = false; // Goomba 死亡
+                    System.out.println("伺服器：火球擊中 Goomba，Goomba 死亡。");
                 }
             });
         });
     }
+
 
     private void broadcastGameState() {
-        Map<String, Object> fullGameState = new HashMap<>();
-
-        Map<String, int[]> playerPositions = new HashMap<>();
-        playerStates.forEach((name, state) -> {
-            playerPositions.put(name, new int[]{
-                state.playerX,
-                state.playerY,
-                state.playerWidth,
-                state.playerHeight,
-                state.isbigmario ? 1 : 0,
-                state.gameOver ? 1 : 0
-            });
+        Map<String, Object> gameState = new HashMap<>();
+        
+        Map<String, int[]> currentPlayers = new HashMap<>();
+        playerStates.forEach((name, player) -> {
+            currentPlayers.put(name, new int[]{player.playerX, player.playerY, player.playerWidth, player.playerHeight, player.isbigmario ? 1 : 0, player.gameOver ? 1 : 0});
         });
-        fullGameState.put("players", playerPositions);
+        gameState.put("players", currentPlayers);
 
-        List<Map<String, Object>> blockData = new ArrayList<>();
+        List<Map<String, Object>> currentBlocksState = new ArrayList<>();
         blocks.forEach(block -> {
-            Map<String, Object> b = new HashMap<>();
-            b.put("x", block.x);
-            b.put("y", block.y);
-            b.put("width", block.width);
-            b.put("height", block.height);
-            b.put("type", (block instanceof ItemBlockState) ? "item" : "normal");
+            Map<String, Object> blockMap = new HashMap<>();
+            blockMap.put("x", block.x);
+            blockMap.put("y", block.y);
+            blockMap.put("width", block.width);
+            blockMap.put("height", block.height);
             if (block instanceof ItemBlockState) {
-                b.put("isHit", ((ItemBlockState) block).isHit);
+                blockMap.put("type", "item");
+                blockMap.put("isHit", ((ItemBlockState) block).isHit);
+            } else {
+                blockMap.put("type", "normal");
             }
-            blockData.add(b);
+            currentBlocksState.add(blockMap);
         });
-        fullGameState.put("blocks", blockData);
+        gameState.put("blocks", currentBlocksState);
 
-        List<Map<String, Object>> mushroomData = new ArrayList<>();
+        List<Map<String, Object>> currentMushroomsState = new ArrayList<>();
         mushrooms.forEach(mushroom -> {
-            Map<String, Object> m = new HashMap<>();
-            m.put("x", mushroom.x);
-            m.put("y", mushroom.y);
-            m.put("width", mushroom.width);
-            m.put("height", mushroom.height);
-            m.put("isVisible", mushroom.isVisible);
-            mushroomData.add(m);
+            Map<String, Object> mushroomMap = new HashMap<>();
+            mushroomMap.put("x", mushroom.x);
+            mushroomMap.put("y", mushroom.y);
+            mushroomMap.put("width", mushroom.width);
+            mushroomMap.put("height", mushroom.height);
+            mushroomMap.put("isVisible", mushroom.isVisible);
+            currentMushroomsState.add(mushroomMap);
         });
-        fullGameState.put("mushrooms", mushroomData);
+        gameState.put("mushrooms", currentMushroomsState);
 
-        List<Map<String, Object>> goombaData = new ArrayList<>();
+        List<Map<String, Object>> currentGoombasState = new ArrayList<>();
         goombas.forEach(goomba -> {
-            Map<String, Object> g = new HashMap<>();
-            g.put("x", goomba.x);
-            g.put("y", goomba.y);
-            g.put("width", goomba.width);
-            g.put("height", goomba.height);
-            g.put("isAlive", goomba.isAlive);
-            goombaData.add(g);
+            Map<String, Object> goombaMap = new HashMap<>();
+            goombaMap.put("x", goomba.x);
+            goombaMap.put("y", goomba.y);
+            goombaMap.put("width", goomba.width);
+            goombaMap.put("height", goomba.height);
+            goombaMap.put("isAlive", goomba.isAlive);
+            currentGoombasState.add(goombaMap);
         });
-        fullGameState.put("goombas", goombaData);
+        gameState.put("goombas", currentGoombasState);
 
-        List<Map<String, Object>> fireballData = new ArrayList<>();
+        List<Map<String, Object>> currentFireballsState = new ArrayList<>();
         fireballs.forEach(fireball -> {
-            if (fireball.isAlive) { 
-                Map<String, Object> f = new HashMap<>();
-                f.put("x", fireball.x);
-                f.put("y", fireball.y);
-                f.put("width", fireball.width);
-                f.put("height", fireball.height);
-                f.put("isAlive", fireball.isAlive);
-                f.put("owner", fireball.ownerPlayerName);
-                fireballData.add(f);
-            }
+            Map<String, Object> fireballMap = new HashMap<>();
+            fireballMap.put("x", fireball.x);
+            fireballMap.put("y", fireball.y);
+            fireballMap.put("width", fireball.width);
+            fireballMap.put("height", fireball.height);
+            fireballMap.put("isAlive", fireball.isAlive);
+            currentFireballsState.add(fireballMap);
         });
-        fullGameState.put("fireballs", fireballData);
+        gameState.put("fireballs", currentFireballsState);
 
-        fullGameState.put("groundLevel", GROUND_LEVEL);
 
-        synchronized (clients) { 
-            for (ClientHandler client : clients) {
+        gameState.put("groundLevel", GROUND_LEVEL);
+
+        synchronized (clients) {
+            clients.forEach(clientHandler -> {
                 try {
-                    if (client.out != null) {
-                        client.sendGameState(fullGameState);
-                    }
+                    clientHandler.out.reset(); // 清除已發送過的對象緩存，確保每次都發送最新的狀態
+                    clientHandler.out.writeObject(gameState);
+                    clientHandler.out.flush();
                 } catch (IOException e) {
-                    System.err.println("向客戶端 " + client.playerName + " 發送狀態時發生錯誤: " + e.getMessage());
+                    System.err.println("向客戶端 " + clientHandler.playerName + " 發送遊戲狀態失敗: " + e.getMessage());
+                    // 如果發送失敗，考慮將此客戶端移除
+                    clientHandler.closeClientResources();
                 }
-            }
+            });
         }
     }
+
 
     private class ClientHandler implements Runnable {
         private Socket clientSocket;
-        private ObjectOutputStream out;
         private ObjectInputStream in;
+        private ObjectOutputStream out;
         private String playerName;
 
-        public ClientHandler(Socket socket, String name) {
+        public ClientHandler(Socket socket, String playerName) {
             this.clientSocket = socket;
-            this.playerName = name;
+            this.playerName = playerName;
             try {
                 out = new ObjectOutputStream(clientSocket.getOutputStream());
                 in = new ObjectInputStream(clientSocket.getInputStream());
-                out.writeObject(playerName); 
+                out.writeObject(playerName); // 將分配的玩家名稱發送給客戶端
                 out.flush();
             } catch (IOException e) {
-                System.err.println("客戶端 " + playerName + " 串流初始化失敗: " + e.getMessage());
-                closeClientResources(); 
+                System.err.println("為客戶端 " + playerName + " 建立串流失敗: " + e.getMessage());
+                closeClientResources();
             }
         }
 
-        public void sendGameState(Map<String, Object> gameState) throws IOException {
-            if (out != null) {
-                out.reset(); 
-                out.writeObject(gameState);
-                out.flush();
-            }
-        }
+        @Override
+        public void run() {
+            try {
+                while (clientSocket.isConnected()) {
+                    Object clientInput = in.readObject(); 
+                    //System.out.println("伺服器收到來自 " + playerName + " 的客戶端輸入: " + clientInput); // <<=== 關鍵調試訊息
 
-        // GameServer.java - 在 ClientHandler 類別的 run() 方法中
-@Override
-public void run() {
-    try {
-        while (clientSocket.isConnected()) {
-            Object clientInput = in.readObject(); 
-            // === 請確保這行存在，用於確認伺服器收到了什麼 ===
-            System.out.println("伺服器收到來自 " + playerName + " 的客戶端輸入: " + clientInput); 
+                    PlayerState currentPlayerState = playerStates.get(playerName);
 
-            PlayerState currentPlayerState = playerStates.get(playerName);
-
-            if (currentPlayerState == null || currentPlayerState.gameOver) {
-                continue; 
-            }
-
-            if (clientInput instanceof Map) {
-                Map<String, Boolean> keyStates = (Map<String, Boolean>) clientInput;
-
-                currentPlayerState.movingLeft = keyStates.getOrDefault("MOVE_LEFT", false);
-                currentPlayerState.movingRight = keyStates.getOrDefault("MOVE_RIGHT", false);
-
-                if (keyStates.getOrDefault("JUMP", false)) {
-                    if (currentPlayerState.isOnGround) {
-                        currentPlayerState.velocityY = currentPlayerState.initialJumpVelocity; 
-                        currentPlayerState.isOnGround = false; 
+                    if (currentPlayerState == null || currentPlayerState.gameOver) {
+                        continue; 
                     }
-                }
-                
-                if (keyStates.getOrDefault("FIREBALL_REQUESTED", false)) {
-                    // === 請確保這行也存在，用於確認伺服器是否進入了這個邏輯分支 ===
-                    System.out.println("伺服器：收到火球請求，檢查大瑪利歐狀態..."); 
 
-                    if (currentPlayerState.isbigmario) { 
-                        int fireballSpeed = 10; 
-                        int fireballWidth = 20;
-                        int fireballHeight = 20;
-                        int fireballX = currentPlayerState.playerX;
-                        int fireballY = currentPlayerState.playerY + currentPlayerState.playerHeight / 2 - fireballHeight / 2;
-                        
-                        // 修正火球發射方向邏輯：根據玩家的當前左右移動狀態判斷
-                        // 如果玩家正在向右移動，火球向右發射
-                        // 如果玩家正在向左移動，火球向左發射
-                        // 如果玩家靜止，可以預設一個方向（例如最後一次移動方向，或者總是向右）
-                        int initialFireballSpeedX = 0;
-                        if (currentPlayerState.movingRight) {
-                            initialFireballSpeedX = fireballSpeed;
-                        } else if (currentPlayerState.movingLeft) {
-                            initialFireballSpeedX = -fireballSpeed;
-                        } else {
-                            // 如果玩家靜止，根據 lastDirection 或預設方向
-                            // 這裡我們假設 playerSpeed > 0 時是向右，如果速度為負則為向左
-                            // 為了簡化，如果玩家靜止，我們讓火球朝玩家當前面向的方向飛
-                            // 但遊戲中可能沒有 "面向方向" 這個狀態，所以通常是依據 `playerSpeed` 的符號，
-                            // 或者添加一個 `lastDirection` 變數在 PlayerState 中。
-                            // 暫時保持您原有的邏輯：如果玩家沒有明確的左右移動，默認向右。
-                            initialFireballSpeedX = fireballSpeed; 
+                    if (clientInput instanceof Map) {
+                        Map<String, Boolean> keyStates = (Map<String, Boolean>) clientInput;
+
+                        currentPlayerState.movingLeft = keyStates.getOrDefault("MOVE_LEFT", false);
+                        currentPlayerState.movingRight = keyStates.getOrDefault("MOVE_RIGHT", false);
+
+                        if (keyStates.getOrDefault("JUMP", false)) {
+                            if (currentPlayerState.isOnGround) {
+                                currentPlayerState.velocityY = currentPlayerState.initialJumpVelocity; 
+                                currentPlayerState.isOnGround = false; 
+                            }
                         }
+                        
+                        if (keyStates.getOrDefault("FIREBALL_REQUESTED", false)) {
+                            System.out.println("伺服器：收到火球請求，檢查大瑪利歐狀態... (玩家: " + playerName + ", isbigmario: " + currentPlayerState.isbigmario + ")"); 
 
+                            if (currentPlayerState.isbigmario) { 
+                                int fireballSpeed = 10; 
+                                int fireballWidth = 20;
+                                int fireballHeight = 20;
+                                
+                                // 火球發射位置調整，使其在玩家前方
+                                int fireballX;
+                                if (currentPlayerState.movingRight || (!currentPlayerState.movingLeft && !currentPlayerState.movingRight)) { // 靜止或向右，向右發射
+                                    fireballX = currentPlayerState.playerX + currentPlayerState.playerWidth;
+                                } else { // 向左，向左發射
+                                    fireballX = currentPlayerState.playerX - fireballWidth;
+                                }
 
-                        FireballState newFireball = new FireballState(fireballX, fireballY, fireballWidth, fireballHeight, initialFireballSpeedX, playerName);
-                        fireballs.add(newFireball);
-                        System.out.println("伺服器：玩家 " + playerName + " 發射火球。火球初始位置: (" + fireballX + ", " + fireballY + ") 速度: " + initialFireballSpeedX); // <<=== 添加火球位置信息
-                    } else {
-                        System.out.println("伺服器：玩家 " + playerName + " 嘗試發射火球但不是大瑪利歐。"); 
-                    }
+                                int fireballY = currentPlayerState.playerY + currentPlayerState.playerHeight / 2 - fireballHeight / 2;
+                                
+                                int initialFireballSpeedX = currentPlayerState.movingRight ? fireballSpeed : 
+                                                            (currentPlayerState.movingLeft ? -fireballSpeed : fireballSpeed); 
+                                // 如果玩家靜止，可以預設方向，或者根據最後移動方向。這裡維持預設向右
+                                if (!currentPlayerState.movingLeft && !currentPlayerState.movingRight) {
+                                    initialFireballSpeedX = fireballSpeed; 
+                                }
+
+                                FireballState newFireball = new FireballState(fireballX, fireballY, fireballWidth, fireballHeight, initialFireballSpeedX, playerName);
+                                fireballs.add(newFireball);
+                                System.out.println("伺服器：玩家 " + playerName + " 發射火球成功！火球初始位置: (" + fireballX + ", " + fireballY + ") 速度: " + initialFireballSpeedX); 
+                            } else {
+                                System.out.println("伺服器：玩家 " + playerName + " 嘗試發射火球但不是大瑪利歐。"); 
+                            }
+                        }
+                    } 
                 }
-            } 
-            // 兼容舊的字符串指令，建議最終移除此部分以簡化代碼
-            else if (clientInput instanceof String) {
-                // ... (此部分保持不變)
+            } catch (IOException | ClassNotFoundException e) {
+                System.err.println("客戶端 " + playerName + " 連線斷開或讀取錯誤: " + e.getMessage());
+            } finally {
+                closeClientResources();
+                System.out.println("客戶端 " + playerName + " 已斷開連線。");
+                
+                synchronized (clients) { 
+                    clients.remove(this);
+                }
+                playerStates.remove(this.playerName); 
             }
         }
-    } catch (IOException | ClassNotFoundException e) {
-        System.err.println("客戶端 " + playerName + " 連線斷開或讀取錯誤: " + e.getMessage());
-    } finally {
-        closeClientResources();
-        System.out.println("客戶端 " + playerName + " 已斷開連線。");
-        
-        synchronized (clients) { 
-            clients.remove(this);
-        }
-        playerStates.remove(this.playerName); 
-    }
-}
 
         private void closeClientResources() {
             try {
                 if (in != null) in.close();
                 if (out != null) out.close();
                 if (clientSocket != null && !clientSocket.isClosed()) clientSocket.close();
-            } catch (IOException e) {
-                System.err.println("關閉客戶端資源時發生錯誤: " + e.getMessage());
+            } catch (IOException ex) {
+                System.err.println("關閉客戶端資源時發生錯誤: " + ex.getMessage());
             }
         }
     }
 
+    // 遊戲狀態類別 (PlayerState, BlockState, ItemBlockState, MushroomState, GoombaState, FireballState)
+    // 保持不變，但為確保完整性，我再次包含它們。
+    // ... (以下為 PlayerState, BlockState 等類別定義) ...
+
     private static class PlayerState implements Serializable {
-        public String name;
+        public String playerName;
         public int playerX, playerY;
-        public int playerWidth = 50;
-        public int playerHeight = 50;
-        public int playerSpeed = 3; 
-
-        public double velocityY = 0; 
-        public double initialJumpVelocity = -15; 
-        public double gravity = 0.8; 
-
+        public int playerWidth, playerHeight;
+        public int playerSpeed = 5;
+        public float velocityY = 0;
+        public float gravity = 0.5f; 
+        public float initialJumpVelocity = -12f; 
+        public boolean isOnGround = false;
         public boolean movingLeft = false;
         public boolean movingRight = false;
-        public boolean isOnGround = false; 
+        public boolean isbigmario = false; // 是否是大瑪利歐
+        public boolean gameOver = false; 
 
-        public boolean isbigmario = false;
-        public boolean gameOver = false;
-
-        public PlayerState(String name, int playerX, int playerY) {
-            this.name = name;
-            this.playerX = playerX;
-            this.playerY = playerY;
-            if (this.isbigmario) {
-                this.playerWidth = 60;
-                this.playerHeight = 60;
-            } else {
-                this.playerWidth = 50;
-                this.playerHeight = 50;
-            }
-        }
-
-        public boolean collidesWith(int otherX, int otherY, int otherWidth, int otherHeight) {
-            return playerX < otherX + otherWidth &&
-                   playerX + playerWidth > otherX &&
-                   playerY < otherY + otherHeight &&
-                   playerY + playerHeight > otherY;
+        public PlayerState(String name, int x, int y) {
+            this.playerName = name;
+            this.playerX = x;
+            this.playerY = y;
+            this.playerWidth = 50;
+            this.playerHeight = 50;
         }
     }
 
@@ -560,7 +529,7 @@ public void run() {
         }
     }
 
-    private static class ItemBlockState extends BlockState implements Serializable {
+    private static class ItemBlockState extends BlockState {
         public boolean isHit = false; 
         public ItemBlockState(int x, int y, int width, int height, boolean isHit) {
             super(x, y, width, height);
