@@ -367,7 +367,7 @@ public class GameServer {
             currentFireballsState.add(fireballMap);
         });
         gameState.put("fireballs", currentFireballsState);
-        System.out.println("伺服器：發送的火球狀態: " + currentFireballsState); // 新增這行
+        //System.out.println("伺服器：發送的火球狀態: " + currentFireballsState); // 新增這行
 
 
         gameState.put("groundLevel", GROUND_LEVEL);
