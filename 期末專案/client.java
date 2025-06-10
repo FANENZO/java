@@ -60,10 +60,10 @@ public class client extends JPanel implements KeyListener, Runnable {
 
         try {
             // 所有圖片路徑都加上 "images/" 前綴
-            playerImage = new ImageIcon("images/mario1.png").getImage();
-            bigplayerImage = new ImageIcon("images/bigmario1.jpg").getImage();
-            playerjump = new ImageIcon("images/mariojump.png").getImage();
-            bigplayerjump = new ImageIcon("images/bigmariojump.png").getImage();
+            playerImage = new ImageIcon("images/mario.png").getImage();
+            bigplayerImage = new ImageIcon("images/bigmario.png").getImage();
+            playerjump = new ImageIcon("images/mario_jump.png").getImage();
+            bigplayerjump = new ImageIcon("images/bigmario_jump.png").getImage();
             gameover = new ImageIcon("images/gameover.png").getImage();
             //fireballImage = new ImageIcon("images/Player_fireball.png").getImage(); 
 
