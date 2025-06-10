@@ -19,7 +19,7 @@ public class GameServer {
     private static final int SCREEN_WIDTH = 800;
     private static final int SCREEN_HEIGHT = 600;
     private static final int GROUND_HEIGHT = 120;
-    private static final int GROUND_LEVEL = SCREEN_HEIGHT - GROUND_HEIGHT;
+    private static final int GROUND_LEVEL = SCREEN_HEIGHT - 85;
 
     private Map<String, PlayerState> playerStates = new ConcurrentHashMap<>();
     private List<ClientHandler> clients = Collections.synchronizedList(new ArrayList<>());
@@ -35,12 +35,12 @@ public class GameServer {
         blocks.add(new ItemBlockState(400, 350, 50, 50, false));
 
         for (int i = 0; i < 5; i++) {
-            blocks.add(new BlockState(50 + i * 100, GROUND_LEVEL - 100, 50, 50));
+            blocks.add(new BlockState(50 + i * 100, 350, 50, 50));
         }
 
         mushrooms.add(new MushroomState(0, 0, 30, 30, false)); // 初始化為不可見
 
-        //goombas.add(new GoombaState(600, GROUND_LEVEL - 40, 40, 40, true, -2));
+        goombas.add(new GoombaState(600, GROUND_LEVEL - 40, 40, 40, true, -2));
         mushrooms.add(new MushroomState(0, GROUND_LEVEL - 40, 40, 40, true));
 
         try (ServerSocket serverSocket = new ServerSocket(port)) {
@@ -233,7 +233,7 @@ public class GameServer {
                                     mushroom.x = block.x;
                                     mushroom.y = block.y - mushroom.height; // 出現在磚塊上方
                                     mushroom.isVisible = true;
-                                    System.out.println("伺服器：蘑菇出現於 (" + mushroom.x + ", " + mushroom.y + ")");
+                                    // System.out.println("伺服器：蘑菇出現於 (" + mushroom.x + ", " + mushroom.y + ")");
                                 }
                             });
                         }
@@ -497,8 +497,6 @@ public class GameServer {
         }
     }
 
-    // 遊戲狀態類別 (PlayerState, BlockState, ItemBlockState, MushroomState, GoombaState, FireballState)
-    // 保持不變，但為確保完整性，我再次包含它們。
     // ... (以下為 PlayerState, BlockState 等類別定義) ...
 
     private static class PlayerState implements Serializable {
