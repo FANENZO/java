@@ -125,13 +125,22 @@ public class client extends JPanel implements KeyListener, Runnable {
                 int blockHeight = (int) block.get("height");
                 String type = (String) block.get("type");
 
-                if ("item".equals(type) && (boolean) block.get("isHit")) {
-                    g.setColor(Color.LIGHT_GRAY); 
-                } else if ("item".equals(type)) {
-                    g.drawImage(itemblockImage, blockX, blockY, blockWidth, blockHeight, this);
+                // --- 這是修改的部分 ---
+                if ("item".equals(type)) {
+                    // 如果是物品方塊，根據是否被敲擊過來決定顯示哪個圖片
+                    boolean isHit = (boolean) block.get("isHit");
+                    if (isHit) {
+                        // 如果被敲過了，就畫普通方塊的圖
+                        g.drawImage(normalblockImage, blockX, blockY, blockWidth, blockHeight, this);
+                    } else {
+                        // 如果還沒被敲過，就畫物品方塊的圖
+                        g.drawImage(itemblockImage, blockX, blockY, blockWidth, blockHeight, this);
+                    }
                 } else {
+                    // 如果是普通方塊，直接畫普通方塊的圖
                     g.drawImage(normalblockImage, blockX, blockY, blockWidth, blockHeight, this);
                 }
+                // --- 修改結束 ---
             }
         }
 
@@ -171,12 +180,11 @@ public class client extends JPanel implements KeyListener, Runnable {
     
                         // 繪製火球圖片
                         g.drawImage(fireballImage, fbX, fbY, fbWidth, fbHeight, this);
-                        //System.out.println("客戶端繪圖：繪製火球於 X:" + fbX + ", Y:" + fbY + ", 寬:" + fbWidth + ", 高:" + fbHeight); // 新增偵錯
                     }
                 }
             }
         } else {
-            System.err.println("客戶端繪圖：fireballImage 為 null，無法繪製火球。"); // 新增偵錯
+            System.err.println("客戶端繪圖：fireballImage 為 null，無法繪製火球。");
         }
 
         synchronized (playerPositions) {
@@ -235,17 +243,13 @@ public class client extends JPanel implements KeyListener, Runnable {
             keyStates.put("MOVE_RIGHT", pressedKeys.contains(KeyEvent.VK_D));
             keyStates.put("JUMP", pressedKeys.contains(KeyEvent.VK_SPACE));
             
-            // 注意這裡：fireballRequested 只有在發送後才設為 false
             keyStates.put("FIREBALL_REQUESTED", fireballRequested); 
-            //System.out.println("客戶端：準備發送 keyStates: " + keyStates); // Debug
         }
         
-        // 確保在發送後才重置 fireballRequested
         out.writeObject(keyStates);
         out.flush();
         
-        // 成功發送後重置 fireballRequested，確保每次按 E 只發送一次
-        if (fireballRequested) { // 只有當它為 true 時才重置
+        if (fireballRequested) {
              fireballRequested = false; 
         }
     }
@@ -255,10 +259,8 @@ public class client extends JPanel implements KeyListener, Runnable {
         synchronized (pressedKeys) {
             pressedKeys.add(e.getKeyCode());
             if (e.getKeyCode() == KeyEvent.VK_E) { 
-                // 只有當前為 false 時才設為 true，避免重複發送請求
                 if (!fireballRequested) {
                     fireballRequested = true; 
-                    //System.out.println("客戶端：按下 E 鍵，fireballRequested 設為 true。"); // Debug
                 }
             }
         }

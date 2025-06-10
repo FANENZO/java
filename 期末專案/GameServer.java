@@ -32,10 +32,10 @@ public class GameServer {
 
     public GameServer(int port) {
         // 初始化遊戲物件
-        blocks.add(new ItemBlockState(400, 350, 50, 50, false));
+        blocks.add(new ItemBlockState(410, 350, 50, 50, false));
 
         for (int i = 0; i < 5; i++) {
-            blocks.add(new BlockState(50 + i * 100, 350, 50, 50));
+            blocks.add(new BlockState(60 + i * 100, 350, 50, 50));
         }
 
         mushrooms.add(new MushroomState(0, 0, 30, 30, false)); // 初始化為不可見
