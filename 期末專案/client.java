@@ -22,6 +22,7 @@ public class client extends JPanel implements KeyListener, Runnable {
     // 主角屬性 (這些變數現在只用於本地繪圖，其值會從伺服器同步)
     private int playerWidth = 50, playerHeight = 50; // 客戶端本地定義，伺服器會傳遞實際尺寸
     private Image playerImage, bigplayerImage; // 角色圖片
+    private Image fireballImage; //火球圖片
     private Image playerjump, bigplayerjump; // 跳躍圖片
     private ImageIcon playerGif, bigplayerGif; // 如果你有 GIF 動畫，這些可以用於動畫播放
 
@@ -38,6 +39,7 @@ public class client extends JPanel implements KeyListener, Runnable {
     private List<Map<String, Object>> receivedBlocks = new ArrayList<>();
     private List<Map<String, Object>> receivedMushrooms = new ArrayList<>();
     private List<Map<String, Object>> receivedGoombas = new ArrayList<>();
+    private List<Map<String, Object>> receivedFireballs = new ArrayList<>();
     private Map<String, int[]> allPlayerPositions; // 儲存所有玩家位置及狀態
     private boolean gameOver = false; // 客戶端本地的遊戲結束狀態
 
@@ -100,6 +102,7 @@ public class client extends JPanel implements KeyListener, Runnable {
         bigplayerjump = new ImageIcon("images\\bigmariojump-removebg-preview.png").getImage();
         playerGif = new ImageIcon("images/output-onlinegiftools.gif");
         bigplayerGif = new ImageIcon("images\\bigmariorun.gif");
+        fireballImage = new ImageIcon("images\\Player_fireball.png").getImage();
 
         // 載入背景圖片 (假設有 background1.png, background2.png 等)
         for (int i = 0; i < backgrounds.length; i++) {
@@ -132,6 +135,7 @@ public class client extends JPanel implements KeyListener, Runnable {
                         receivedBlocks = (List<Map<String, Object>>) fullGameState.get("blocks");
                         receivedMushrooms = (List<Map<String, Object>>) fullGameState.get("mushrooms");
                         receivedGoombas = (List<Map<String, Object>>) fullGameState.get("goombas");
+                        receivedFireballs = (List<Map<String, Object>>) fullGameState.get("fireballs");
                         groundLevel = (int) fullGameState.get("groundLevel");
                         System.out.println("更新遊戲狀態。玩家數量: " + (allPlayerPositions != null ? allPlayerPositions.size() : 0)); // DEBUG
 
@@ -177,6 +181,17 @@ public class client extends JPanel implements KeyListener, Runnable {
             // 如果還沒收到 groundLevel，先用預設值或不繪製
             g.fillRect(0, screenHeight - groundHeight, screenWidth, groundHeight);
             System.out.println("PaintComponent: groundLevel 未設定，使用預設地面。"); // DEBUG
+        }
+        
+        // 繪製火球
+        if (receivedFireballs != null) {
+            for (Map<String, Object> fireball : receivedFireballs) {
+                int fx = (int) fireball.get("x");
+                int fy = (int) fireball.get("y");
+                int fwidth = (int) fireball.get("width");
+                int fheight = (int) fireball.get("height");
+                g.drawImage(fireballImage, fx, fy, fwidth, fheight, this);
+            }
         }
 
         // 只有當從伺服器接收到遊戲狀態時才進行繪製
@@ -274,6 +289,9 @@ public class client extends JPanel implements KeyListener, Runnable {
         }
     }
 
+    // 加入一個旗標表示「是否發射火球」
+    private volatile boolean fireballRequested = false;
+
     @Override
     public void run() {
         // 這個 run 方法現在負責定時發送按鍵指令
@@ -283,6 +301,7 @@ public class client extends JPanel implements KeyListener, Runnable {
                 currentKeyStatesToSend.put("MOVE_LEFT", false);
                 currentKeyStatesToSend.put("MOVE_RIGHT", false);
                 currentKeyStatesToSend.put("JUMP", false);
+                currentKeyStatesToSend.put("FIREBALL", false); // 新增 fireball 欄位
 
                 synchronized (pressedKeys) { // 同步訪問 pressedKeys 集合
                     if (pressedKeys.contains(KeyEvent.VK_LEFT) || pressedKeys.contains(KeyEvent.VK_A)) {
@@ -294,6 +313,11 @@ public class client extends JPanel implements KeyListener, Runnable {
                     if (pressedKeys.contains(KeyEvent.VK_SPACE) || pressedKeys.contains(KeyEvent.VK_W)) {
                         currentKeyStatesToSend.put("JUMP", true);
                     }
+                }
+                // 如果之前按過 E，發射火球狀態設 true，發送一次後重置
+                if (fireballRequested) {
+                    currentKeyStatesToSend.put("FIREBALL", true);
+                    fireballRequested = false; // 重置
                 }
 
                 out.writeObject(currentKeyStatesToSend); // 總是發送地圖
@@ -309,12 +333,15 @@ public class client extends JPanel implements KeyListener, Runnable {
         }
     }
 
-    @Override
-    public void keyPressed(KeyEvent e) {
-        synchronized (pressedKeys) {
-            pressedKeys.add(e.getKeyCode());
+@Override
+public void keyPressed(KeyEvent e) {
+    synchronized (pressedKeys) {
+        pressedKeys.add(e.getKeyCode());
+        if (e.getKeyCode() == KeyEvent.VK_E) {
+            fireballRequested = true; // 按下 E 觸發發射火球請求
         }
     }
+}
 
     @Override
     public void keyReleased(KeyEvent e) {
