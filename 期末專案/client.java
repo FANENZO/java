@@ -65,8 +65,14 @@ public class client extends JPanel implements KeyListener, Runnable {
             playerjump = new ImageIcon("images/mariojump.png").getImage();
             bigplayerjump = new ImageIcon("images/bigmariojump.png").getImage();
             gameover = new ImageIcon("images/gameover.png").getImage();
-            fireballImage = new ImageIcon("images/Player_fireball.png").getImage(); 
+            //fireballImage = new ImageIcon("images/Player_fireball.png").getImage(); 
 
+            fireballImage = new ImageIcon("images/Player_fireball.png").getImage(); // 你目前的寫法
+    if (fireballImage == null) {
+        System.err.println("客戶端：fireball.png 圖片載入失敗！(fireballImage 為 null)");
+    } else {
+        System.out.println("客戶端：fireball.png 圖片載入成功。");
+    }
             backgrounds[0] = new ImageIcon("images/background1.png").getImage();
             backgrounds[1] = new ImageIcon("images/background2.png").getImage();
             backgrounds[2] = new ImageIcon("images/background3.png").getImage();
@@ -145,15 +151,16 @@ public class client extends JPanel implements KeyListener, Runnable {
         synchronized (currentGoombas) {
             for (Map<String, Object> goomba : currentGoombas) {
                 if ((boolean) goomba.get("isAlive")) {
-                    g.setColor(Color.decode("#94471B")); 
+                    g.setColor(Color.decode("#94471B"));
                     int gX = (int) goomba.get("x");
                     int gY = (int) goomba.get("y");
                     int gW = (int) goomba.get("width");
                     int gH = (int) goomba.get("height");
-                    g.fillOval(gX, gY, gW, gH); 
+                    g.fillOval(gX, gY, gW, gH);
                 }
             }
         }
+        System.out.println("客戶端：當前火球數量: " + currentFireballs.size()); // 新增這行
 
         synchronized (currentFireballs) {
             for (Map<String, Object> fireball : currentFireballs) {
@@ -161,9 +168,9 @@ public class client extends JPanel implements KeyListener, Runnable {
                 int fbY = (int) fireball.get("y");
                 int fbWidth = (int) fireball.get("width");
                 int fbHeight = (int) fireball.get("height");
-                boolean fbAlive = (boolean) fireball.get("isAlive");
+                //boolean fbAlive = (boolean) fireball.get("isAlive");
 
-                if (fbAlive && fireballImage != null) {
+                if (  fireballImage != null) {
                     g.drawImage(fireballImage, fbX, fbY, fbWidth, fbHeight, this);
                 }
             }

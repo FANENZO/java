@@ -41,8 +41,7 @@ public class GameServer {
         mushrooms.add(new MushroomState(0, 0, 30, 30, false)); // 初始化為不可見
 
         //goombas.add(new GoombaState(600, GROUND_LEVEL - 40, 40, 40, true, -2));
-        mushrooms.add(new MushroomState(600, GROUND_LEVEL - 40, 40, 40, true));
-
+        mushrooms.add(new MushroomState(0, GROUND_LEVEL - 40, 40, 40, true));
 
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("遊戲伺服器已啟動，監聽 Port: " + port);
@@ -122,10 +121,10 @@ public class GameServer {
                         // 4. 確保玩家不會掉出畫面底部 (或固定在地面上)
                         if (player.playerY + player.playerHeight >= GROUND_LEVEL) {
                             player.playerY = GROUND_LEVEL - player.playerHeight;
-                            player.velocityY = 0; 
-                            player.isOnGround = true; 
+                            player.velocityY = 0;
+                            player.isOnGround = true; // <--- 玩家應該在這裡被標記為在地面上
                         } else {
-                            player.isOnGround = false; 
+                            player.isOnGround = false; // <--- 玩家應該在這裡被標記為在空中
                         }
 
                         // 5. 確保玩家不會跑出左右邊界
@@ -267,7 +266,7 @@ public class GameServer {
                     // 判斷是否踩到 Goomba (玩家從上方落下，Goomba 死亡)
                     if (player.velocityY > 0 && player.playerY + player.playerHeight - player.velocityY < goomba.y) {
                         goomba.isAlive = false;
-                        player.velocityY = -player.initialJumpVelocity / 2;// 踩死後小跳一下
+                        player.velocityY = -player.initialJumpVelocity / 2;; // 踩死後小跳一下
                         System.out.println("伺服器：玩家 " + playerName + " 踩死了 Goomba。");
                     } else { // 被 Goomba 撞到
                         if (player.isbigmario) {
@@ -368,6 +367,7 @@ public class GameServer {
             currentFireballsState.add(fireballMap);
         });
         gameState.put("fireballs", currentFireballsState);
+        System.out.println("伺服器：發送的火球狀態: " + currentFireballsState); // 新增這行
 
 
         gameState.put("groundLevel", GROUND_LEVEL);
@@ -375,7 +375,7 @@ public class GameServer {
         synchronized (clients) {
             clients.forEach(clientHandler -> {
                 try {
-                    clientHandler.out.reset(); // 清除已發送過的對象緩存，確保每次都發送最新的狀態
+                    //clientHandler.out.reset(); // 清除已發送過的對象緩存，確保每次都發送最新的狀態
                     clientHandler.out.writeObject(gameState);
                     clientHandler.out.flush();
                 } catch (IOException e) {
@@ -429,8 +429,13 @@ public class GameServer {
 
                         if (keyStates.getOrDefault("JUMP", false)) {
                             if (currentPlayerState.isOnGround) {
-                                currentPlayerState.velocityY = currentPlayerState.initialJumpVelocity; 
-                                currentPlayerState.isOnGround = false; 
+                                currentPlayerState.velocityY = currentPlayerState.initialJumpVelocity;
+                                currentPlayerState.isOnGround = false;
+                                // === 請確認這行存在，看是否輸出 ===
+                                System.out.println("伺服器：玩家 " + playerName + " 成功發起跳躍。isOnGround: " + currentPlayerState.isOnGround + " velocityY: " + currentPlayerState.velocityY);
+                            } else {
+                                // === 請確認這行存在，看是否輸出 ===
+                                System.out.println("伺服器：玩家 " + playerName + " 嘗試跳躍，但不在地面上。isOnGround: " + currentPlayerState.isOnGround);
                             }
                         }
                         
