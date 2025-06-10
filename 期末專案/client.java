@@ -204,13 +204,24 @@ public class client extends JPanel implements KeyListener, Runnable {
                     return; 
                 }
 
-                Image currentImage;
-                if (pY + pH < groundLevel) { 
-                    currentImage = isBigMario ? bigplayerjump : playerjump;
-                } else {
-                    currentImage = isBigMario ? bigplayerImage : playerImage;
+                // client.java -> paintComponent()
+                boolean isOnGround = (pos[6] == 1); // 讀取新的 isOnGround 狀態
+
+                if (isGameOver) {
+                    if (name.equals(myPlayerName) && gameover != null) {
+                        g.drawImage(gameover, screenWidth / 2 - gameover.getWidth(this) / 2,
+                                    screenHeight / 2 - gameover.getHeight(this) / 2, this);
+                    }
+                    return; 
                 }
 
+                Image currentImage;
+                // 判斷條件從 pY + pH < groundLevel 改為 !isOnGround
+                if (!isOnGround) { // 如果伺服器說不在地面上，就顯示跳躍圖
+                    currentImage = isBigMario ? bigplayerjump : playerjump;
+                } else { // 否則，顯示站立圖
+                    currentImage = isBigMario ? bigplayerImage : playerImage;
+                }
                 if (currentImage != null) {
                     g.drawImage(currentImage, pX, pY, pW, pH, this);
                 }

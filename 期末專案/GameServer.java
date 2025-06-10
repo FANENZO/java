@@ -300,7 +300,7 @@ public class GameServer {
         
         Map<String, int[]> currentPlayers = new HashMap<>();
         playerStates.forEach((name, player) -> {
-            currentPlayers.put(name, new int[]{player.playerX, player.playerY, player.playerWidth, player.playerHeight, player.isbigmario ? 1 : 0, player.gameOver ? 1 : 0});
+            currentPlayers.put(name, new int[]{player.playerX, player.playerY, player.playerWidth, player.playerHeight, player.isbigmario ? 1 : 0, player.gameOver ? 1 : 0, player.isOnGround ? 1 : 0});
         });
         gameState.put("players", currentPlayers);
 
