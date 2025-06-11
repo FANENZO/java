@@ -29,6 +29,7 @@ public class GameServer {
     private List<MushroomState> mushrooms = Collections.synchronizedList(new ArrayList<>());
     private List<GoombaState> goombas = Collections.synchronizedList(new ArrayList<>());
     private List<FireballState> fireballs = Collections.synchronizedList(new ArrayList<>());
+    private FlagState flag;
 
     public GameServer(int port) {
         // 初始化遊戲物件
@@ -39,6 +40,7 @@ public class GameServer {
         mushrooms.add(new MushroomState(0, 0, 30, 30, false));
         goombas.add(new GoombaState(600, GROUND_LEVEL - 40, 40, 40, true, -2));
         mushrooms.add(new MushroomState(0, GROUND_LEVEL - 40, 40, 40, true));
+        flag = new FlagState(SCREEN_WIDTH - 50, GROUND_LEVEL - 60, 50, 60);
 
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("遊戲伺服器已啟動，監聽 Port: " + port);
@@ -176,8 +178,7 @@ public class GameServer {
 
     private void handleCollisions() {
         playerStates.forEach((playerName, player) -> {
-            if (player.gameOver)
-                return;
+            if (player.gameOver) return;
 
             System.out.printf("START_TICK[%s]: y=%d, vy=%.2f, onGround(in)=%b%n",
                 playerName, player.playerY, player.velocityY, player.isOnGround);
@@ -236,6 +237,14 @@ public class GameServer {
                         break;
                     }
                 }
+            }
+
+            // 檢查與旗標碰撞
+            Rectangle playerBounds = new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight);
+            Rectangle flagBounds = new Rectangle(flag.x, flag.y, flag.width, flag.height);
+            if (playerBounds.intersects(flagBounds)) {
+                player.gameOver = true;
+                System.out.println("玩家 " + playerName + " 已觸達旗標，遊戲結束！");
             }
 
             player.isOnGround = isGroundedThisFrame.get();
@@ -302,7 +311,7 @@ public class GameServer {
                 player.isbigmario ? 1 : 0,
                 player.gameOver ? 1 : 0,
                 player.isOnGround ? 1 : 0,
-                (player.movingLeft || player.movingRight) ? 1 : 0 // 傳送 isMoving 狀態
+                (player.movingLeft || player.movingRight) ? 1 : 0
             });
         });
         gameState.put("players", currentPlayers);
@@ -359,6 +368,13 @@ public class GameServer {
             currentFireballsState.add(fireballMap);
         });
         gameState.put("fireballs", currentFireballsState);
+
+        Map<String, Object> flagMap = new HashMap<>();
+        flagMap.put("x", flag.x);
+        flagMap.put("y", flag.y);
+        flagMap.put("width", flag.width);
+        flagMap.put("height", flag.height);
+        gameState.put("flag", flagMap);
 
         gameState.put("groundLevel", GROUND_LEVEL);
 
@@ -554,6 +570,16 @@ public class GameServer {
             this.speedX = speedX;
             this.isAlive = true;
             this.ownerPlayerName = ownerPlayerName;
+        }
+    }
+
+    private static class FlagState implements Serializable {
+        public int x, y, width, height;
+        public FlagState(int x, int y, int width, int height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
         }
     }
 

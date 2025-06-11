@@ -19,46 +19,45 @@ import javax.swing.JFrame;
 import javax.swing.JPanel;
 
 public class client extends JPanel implements KeyListener, Runnable {
-    // 主角屬性 (這些變數現在只用於本地繪圖，其值會從伺服器同步)
-    private int playerWidth = 50, playerHeight = 50; 
-    private Image playerImage, bigplayerImage; 
-    private Image fireballImage; 
-    private Image playerjump, bigplayerjump; 
-    private ImageIcon playerGif, bigplayerGif; 
+    // 主角屬性
+    private int playerWidth = 50, playerHeight = 50;
+    private Image playerImage, bigplayerImage;
+    private Image fireballImage;
+    private Image playerjump, bigplayerjump;
+    private ImageIcon playerWalkGif;
+    private ImageIcon bigplayerWalkGif;
+    private Image gameover;
+    private Image mushroomImage;
+    private Image goombaImage;
+    private Image itemblockImage;
+    private Image normalblockImage;
+    private Image flagImage; // 新增旗广圖片
 
     // 背景屬性
     private Image[] backgrounds = new Image[4];
-    private Image gameover;
     private int currentBackgroundIndex = 0;
     private int screenWidth = 800;
     private int screenHeight = 600;
     private int groundHeight = 120;
-    
 
-    // 遊戲狀態 (從伺服器接收並更新)
+    // 遊戲狀態
     private Map<String, int[]> playerPositions = Collections.synchronizedMap(new HashMap<>());
     private List<Map<String, Object>> currentBlocks = Collections.synchronizedList(new ArrayList<>());
     private List<Map<String, Object>> currentMushrooms = Collections.synchronizedList(new ArrayList<>());
     private List<Map<String, Object>> currentGoombas = Collections.synchronizedList(new ArrayList<>());
+    private Map<String, Object> currentFlag = Collections.synchronizedMap(new HashMap<>()); // 新增旗广狀態
     private int groundLevel;
-
     private List<Map<String, Object>> currentFireballs = Collections.synchronizedList(new ArrayList<>());
 
     // 網路相關
     private Socket socket;
     private ObjectOutputStream out;
     private ObjectInputStream in;
-    private String myPlayerName; 
+    private String myPlayerName;
 
     // 按鍵狀態
     private Set<Integer> pressedKeys = Collections.synchronizedSet(new HashSet<>());
     private boolean fireballRequested = false;
-    
-    //其他圖
-    private Image mushroomImage; // 蘑菇圖片
-    private Image goombaImage; // Goomba圖片
-    private Image itemblockImage; // 物品方塊圖片
-    private Image normalblockImage; // 普通方塊圖片
 
     public client(String serverAddress, int serverPort) {
         setFocusable(true);
@@ -66,18 +65,19 @@ public class client extends JPanel implements KeyListener, Runnable {
         setBackground(Color.CYAN);
 
         try {
-            // 所有圖片路徑都加上 "images/" 前綴
+            // 載入圖片
             playerImage = new ImageIcon("images/mario.png").getImage();
             bigplayerImage = new ImageIcon("images/bigmario.png").getImage();
             playerjump = new ImageIcon("images/mario_jump.png").getImage();
             bigplayerjump = new ImageIcon("images/bigmario_jump.png").getImage();
-            playerGif = new ImageIcon("images/output-onlinegiftools.gif");
-            bigplayerGif = new ImageIcon("images/bigmariorun.gif");
+            playerWalkGif = new ImageIcon("images/output-onlinegiftools.gif");
+            bigplayerWalkGif = new ImageIcon("images/bigmariorun.gif");
             gameover = new ImageIcon("images/gameover.png").getImage();
             mushroomImage = new ImageIcon("images/mushroom.png").getImage();
             goombaImage = new ImageIcon("images/goomba.png").getImage();
             itemblockImage = new ImageIcon("images/bricks1.png").getImage();
             normalblockImage = new ImageIcon("images/brick.png").getImage();
+            flagImage = new ImageIcon("images/flag.png").getImage(); // 載入旗广圖片
             fireballImage = new ImageIcon(getClass().getResource("/images/Player_fireball.png")).getImage();
             backgrounds[0] = new ImageIcon("images/background1.png").getImage();
             backgrounds[1] = new ImageIcon("images/background2.png").getImage();
@@ -95,19 +95,19 @@ public class client extends JPanel implements KeyListener, Runnable {
 
             myPlayerName = (String) in.readObject();
             System.out.println("連線成功，您的玩家名稱是: " + myPlayerName);
-            System.out.println("客戶端串流初始化成功！"); // Debug
-            System.out.println("您是: " + myPlayerName + " - 接收到伺服器分配的名字"); // Debug
+            System.out.println("客戶端串流初始化成功！");
+            System.out.println("您是: " + myPlayerName + " - 接收到伺服器分配的名字");
 
             new Thread(new ServerReader()).start();
-            System.out.println("ServerReader 線程已啟動。"); // Debug
-            System.out.println("ServerReader 執行中，等待伺服器數據..."); // Debug
+            System.out.println("ServerReader 線程已啟動。");
+            System.out.println("ServerReader 執行中，等待伺服器數據...");
 
             new Thread(this).start();
-            System.out.println("按鍵發送線程已啟動。"); // Debug
+            System.out.println("按鍵發送線程已啟動。");
 
         } catch (IOException | ClassNotFoundException e) {
             System.err.println("連線伺服器失敗: " + e.getMessage());
-            System.exit(1); 
+            System.exit(1);
         }
     }
 
@@ -127,22 +127,16 @@ public class client extends JPanel implements KeyListener, Runnable {
                 int blockHeight = (int) block.get("height");
                 String type = (String) block.get("type");
 
-                // --- 這是修改的部分 ---
                 if ("item".equals(type)) {
-                    // 如果是物品方塊，根據是否被敲擊過來決定顯示哪個圖片
                     boolean isHit = (boolean) block.get("isHit");
                     if (isHit) {
-                        // 如果被敲過了，就畫普通方塊的圖
                         g.drawImage(normalblockImage, blockX, blockY, blockWidth, blockHeight, this);
                     } else {
-                        // 如果還沒被敲過，就畫物品方塊的圖
                         g.drawImage(itemblockImage, blockX, blockY, blockWidth, blockHeight, this);
                     }
                 } else {
-                    // 如果是普通方塊，直接畫普通方塊的圖
                     g.drawImage(normalblockImage, blockX, blockY, blockWidth, blockHeight, this);
                 }
-                // --- 修改結束 ---
             }
         }
 
@@ -170,17 +164,28 @@ public class client extends JPanel implements KeyListener, Runnable {
             }
         }
 
-        if (fireballImage != null) { // 確保圖片已載入
+        // 繪製旗广
+        synchronized (currentFlag) {
+            if (!currentFlag.isEmpty()) {
+                int flagX = (int) currentFlag.get("x");
+                int flagY = (int) currentFlag.get("y");
+                int flagW = (int) currentFlag.get("width");
+                int flagH = (int) currentFlag.get("height");
+                if (flagImage != null) {
+                    g.drawImage(flagImage, flagX, flagY, flagW, flagH, this);
+                }
+            }
+        }
+
+        if (fireballImage != null) {
             synchronized (currentFireballs) {
                 for (Map<String, Object> fireball : currentFireballs) {
                     Boolean fbAlive = (Boolean) fireball.getOrDefault("isAlive", false);
-                    if (fbAlive) { // 只繪製活著的火球
+                    if (fbAlive) {
                         int fbX = (int) fireball.getOrDefault("x", 0);
                         int fbY = (int) fireball.getOrDefault("y", 0);
                         int fbWidth = (int) fireball.getOrDefault("width", 20);
                         int fbHeight = (int) fireball.getOrDefault("height", 20);
-    
-                        // 繪製火球圖片
                         g.drawImage(fireballImage, fbX, fbY, fbWidth, fbHeight, this);
                     }
                 }
@@ -197,37 +202,26 @@ public class client extends JPanel implements KeyListener, Runnable {
                 int pH = pos[3];
                 boolean isBigMario = (pos[4] == 1);
                 boolean isGameOver = (pos[5] == 1);
-                boolean isOnGround = (pos[6] == 1); // 讀取新的 isOnGround 狀態
-                boolean isMoving = (pos[7] == 1); // 新增移動狀態
+                boolean isOnGround = (pos[6] == 1);
+                boolean isMoving = (pos[7] == 1);
 
                 if (isGameOver) {
                     if (name.equals(myPlayerName) && gameover != null) {
                         g.drawImage(gameover, screenWidth / 2 - gameover.getWidth(this) / 2,
                                     screenHeight / 2 - gameover.getHeight(this) / 2, this);
                     }
-                    return; 
-                }
-
-                
-
-                if (isGameOver) {
-                    if (name.equals(myPlayerName) && gameover != null) {
-                        g.drawImage(gameover, screenWidth / 2 - gameover.getWidth(this) / 2,
-                                    screenHeight / 2 - gameover.getHeight(this) / 2, this);
-                    }
-                    return; 
+                    return;
                 }
 
                 Image currentImage;
-                // 判斷條件從 pY + pH < groundLevel 改為 !isOnGround
-                if (!isOnGround) { // 如果伺服器說不在地面上，就顯示跳躍圖
+                if (!isOnGround) {
                     currentImage = isBigMario ? bigplayerjump : playerjump;
                 } else if (isMoving) {
-                    currentImage = isBigMario ? bigplayerGif.getImage() : playerGif.getImage();
-
-                } else { // 否則，顯示站立圖
+                    currentImage = isBigMario ? bigplayerWalkGif.getImage() : playerWalkGif.getImage();
+                } else {
                     currentImage = isBigMario ? bigplayerImage : playerImage;
                 }
+
                 if (currentImage != null) {
                     g.drawImage(currentImage, pX, pY, pW, pH, this);
                 }
@@ -243,12 +237,11 @@ public class client extends JPanel implements KeyListener, Runnable {
         while (true) {
             try {
                 sendPlayerInput();
-                Thread.sleep(1000 / 60); 
-            }
-            catch (IOException | InterruptedException e) {
+                Thread.sleep(1000 / 60);
+            } catch (IOException | InterruptedException e) {
                 System.err.println("發送按鍵指令時發生錯誤或線程被中斷: " + e.getMessage());
-                Thread.currentThread().interrupt(); 
-                break; 
+                Thread.currentThread().interrupt();
+                break;
             }
         }
     }
@@ -259,15 +252,14 @@ public class client extends JPanel implements KeyListener, Runnable {
             keyStates.put("MOVE_LEFT", pressedKeys.contains(KeyEvent.VK_A));
             keyStates.put("MOVE_RIGHT", pressedKeys.contains(KeyEvent.VK_D));
             keyStates.put("JUMP", pressedKeys.contains(KeyEvent.VK_SPACE));
-            
-            keyStates.put("FIREBALL_REQUESTED", fireballRequested); 
+            keyStates.put("FIREBALL_REQUESTED", fireballRequested);
         }
-        
+
         out.writeObject(keyStates);
         out.flush();
-        
+
         if (fireballRequested) {
-             fireballRequested = false; 
+            fireballRequested = false;
         }
     }
 
@@ -275,9 +267,9 @@ public class client extends JPanel implements KeyListener, Runnable {
     public void keyPressed(KeyEvent e) {
         synchronized (pressedKeys) {
             pressedKeys.add(e.getKeyCode());
-            if (e.getKeyCode() == KeyEvent.VK_E) { 
+            if (e.getKeyCode() == KeyEvent.VK_E) {
                 if (!fireballRequested) {
-                    fireballRequested = true; 
+                    fireballRequested = true;
                 }
             }
         }
@@ -331,6 +323,13 @@ public class client extends JPanel implements KeyListener, Runnable {
                             }
                         }
 
+                        if (gameState.containsKey("flag")) {
+                            synchronized (currentFlag) {
+                                currentFlag.clear();
+                                currentFlag.putAll((Map<String, Object>) gameState.get("flag"));
+                            }
+                        }
+
                         if (gameState.containsKey("fireballs")) {
                             synchronized (currentFireballs) {
                                 currentFireballs.clear();
@@ -338,12 +337,11 @@ public class client extends JPanel implements KeyListener, Runnable {
                             }
                         }
 
-
                         if (gameState.containsKey("groundLevel")) {
                             groundLevel = (int) gameState.get("groundLevel");
                         }
-                        
-                        repaint(); 
+
+                        repaint();
                     }
                 }
             } catch (IOException | ClassNotFoundException e) {
@@ -355,7 +353,7 @@ public class client extends JPanel implements KeyListener, Runnable {
                 } catch (IOException ex) {
                     System.err.println("關閉客戶端連線資源時發生錯誤: " + ex.getMessage());
                 }
-            } 
+            }
         }
     }
 
@@ -375,7 +373,7 @@ public class client extends JPanel implements KeyListener, Runnable {
         }
 
         JFrame frame = new JFrame("馬力歐遊戲雛型 (客戶端)");
-        client game = new client(serverAddress, serverPort); 
+        client game = new client(serverAddress, serverPort);
         frame.add(game);
         frame.setSize(800, 600);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
