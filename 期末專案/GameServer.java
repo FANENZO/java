@@ -3,6 +3,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -42,7 +43,7 @@ public class GameServer {
         mushrooms.add(new MushroomState(0, GROUND_LEVEL - 40, 40, 40, true));
         flag = new FlagState(SCREEN_WIDTH - 50, GROUND_LEVEL - 60, 50, 60);
 
-        try (ServerSocket serverSocket = new ServerSocket(port)) {
+        try (ServerSocket serverSocket = new ServerSocket(port, 50, InetAddress.getByName("0.0.0.0"))) {
             System.out.println("遊戲伺服器已啟動，監聽 Port: " + port);
 
             startGameLoop();
@@ -239,7 +240,6 @@ public class GameServer {
                 }
             }
 
-            // 檢查與旗標碰撞
             Rectangle playerBounds = new Rectangle(player.playerX, player.playerY, player.playerWidth, player.playerHeight);
             Rectangle flagBounds = new Rectangle(flag.x, flag.y, flag.width, flag.height);
             if (playerBounds.intersects(flagBounds)) {
