@@ -38,10 +38,11 @@ public class GameServer {
         for (int i = 0; i < 5; i++) {
             blocks.add(new BlockState(60 + i * 200, 380, 50, 50));
         }
+        blocks.add(new ItemBlockState(410, 200, 50, 50, false));
         mushrooms.add(new MushroomState(0, 0, 30, 30, false));
         goombas.add(new GoombaState(600, GROUND_LEVEL - 40, 40, 40, true, -2));
-        mushrooms.add(new MushroomState(0, GROUND_LEVEL - 40, 40, 40, true));
-        flag = new FlagState(SCREEN_WIDTH - 50, GROUND_LEVEL - 60, 50, 60);
+        //mushrooms.add(new MushroomState(0, GROUND_LEVEL - 40, 40, 40, true));
+        flag = new FlagState(SCREEN_WIDTH - 100, GROUND_LEVEL - 185, 100, 180);
 
         try (ServerSocket serverSocket = new ServerSocket(port, 50, InetAddress.getByName("0.0.0.0"))) {
             System.out.println("遊戲伺服器已啟動，監聽 Port: " + port);
@@ -181,8 +182,8 @@ public class GameServer {
         playerStates.forEach((playerName, player) -> {
             if (player.gameOver) return;
 
-            System.out.printf("START_TICK[%s]: y=%d, vy=%.2f, onGround(in)=%b%n",
-                playerName, player.playerY, player.velocityY, player.isOnGround);
+            // System.out.printf("START_TICK[%s]: y=%d, vy=%.2f, onGround(in)=%b%n",
+            //     playerName, player.playerY, player.velocityY, player.isOnGround);
 
             java.util.concurrent.atomic.AtomicBoolean isGroundedThisFrame = new java.util.concurrent.atomic.AtomicBoolean(false);
 
@@ -249,8 +250,8 @@ public class GameServer {
 
             player.isOnGround = isGroundedThisFrame.get();
 
-            System.out.printf("END_TICK[%s]:   y=%d, vy=%.2f, onGround(out)=%b%n%n",
-                playerName, player.playerY, player.velocityY, player.isOnGround);
+            // System.out.printf("END_TICK[%s]:   y=%d, vy=%.2f, onGround(out)=%b%n%n",
+            //     playerName, player.playerY, player.velocityY, player.isOnGround);
 
             mushrooms.forEach(mushroom -> {
                 if (mushroom.isVisible &&
